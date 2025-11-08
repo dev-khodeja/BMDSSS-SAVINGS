@@ -402,7 +402,10 @@ async function requestTransfer(){
     to: to,
     amount: a
   });
+
   
+  // 🔥 NEW: Specific notification
+  await notifyTransferRequest(currentUser, to, a);
   // 🔥 NEW: Real-time notification for admin
   await addNotification(
     `🔄 ${currentUser} requested to transfer ৳${a} to ${to}`,
@@ -676,17 +679,14 @@ async function approveRequest(requestId) {
 
   // 🔥 NEW: Approval notification
   if (request.user) {
-    await addNotification(
-      `✅ Your ${request.type} request has been approved!`,
-      request.user
-    );
+    await notifyApproval(request.user, request.type, request.amount);
   }
 
   // ... তোমার existing approval code ...
 
   // Mark request as approved
-  await window.firebase.update(window.firebase.ref(window.firebase.db, 'requests/' + requestId), {
-    status: 'approved',
+    await window.firebase.update(window.firebase.ref(window.firebase.db, 'requests/' + requestId), {
+    status: 'approved', 
     approvedAt: Date.now()
   });
 
@@ -918,16 +918,25 @@ async function markAsRead(notificationId) {
 // existing intialization----
 
 // Initialize real-time listeners when page loads
+// Initialize app
 document.addEventListener('DOMContentLoaded', function() {
   setupRealTimeListeners();
-  setupNotificationListener(); // 🔥 NEW: Notification listener
   
-  // Request notification permission on app start
-  if ("Notification" in window) {
-    Notification.requestPermission();
+  // 🔥 NEW: Setup notifications
+  setupFCMNotifications().then(success => {
+    if (success) {
+      setupForegroundMessages();
+    }
+  });
+  
+  // Request notification permission
+  if ("Notification" in window && Notification.permission === "default") {
+    setTimeout(() => {
+      Notification.requestPermission();
+    }, 2000);
   }
   
-  // Check if user was already logged in
+  // Check saved user
   const savedUser = localStorage.getItem('currentUser');
   if (savedUser) {
     getUsers().then(users => {
@@ -938,7 +947,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
-
 // final implement------
 
 // Notification Panel Functions
@@ -1003,3 +1011,203 @@ async function updateNotificationsList(notifications = null) {
       }
     });
 }
+
+
+// FCM ----
+// FCM Notification Setup
+let messaging = null;
+
+async function setupFCMNotifications() {
+  try {
+    // Check if Firebase Messaging is supported
+    if (!window.firebase || !window.firebase.messaging) {
+      console.log('FCM not supported');
+      return false;
+    }
+
+    // Get FCM instance
+    messaging = window.firebase.messaging();
+    
+    // Request notification permission
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      console.log('Notification permission granted');
+      
+      // Get FCM token
+      const token = await messaging.getToken({
+        vapidKey: 'YOUR_VAPID_KEY' // Firebase console theke pabe
+      });
+      
+      if (token) {
+        console.log('FCM Token:', token);
+        await saveFCMToken(token);
+        return true;
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('FCM setup error:', error);
+    return false;
+  }
+}
+
+// Save FCM token to database
+async function saveFCMToken(token) {
+  if (!currentUser) return;
+  
+  try {
+    await window.firebase.set(
+      window.firebase.ref(window.firebase.db, `users/${currentUser}/fcmToken`),
+      token
+    );
+    console.log('FCM token saved for user:', currentUser);
+  } catch (error) {
+    console.error('Error saving FCM token:', error);
+  }
+}
+
+// Listen for foreground messages
+function setupForegroundMessages() {
+  if (!messaging) return;
+  
+  messaging.onMessage((payload) => {
+    console.log('Foreground message:', payload);
+    
+    // Show custom notification
+    showCustomNotification(
+      payload.notification?.title || 'BMDSSS 🔔',
+      payload.notification?.body || payload.data?.message
+    );
+    
+    // Update notification badge
+    updateNotificationBadge(1, true); // increment by 1
+  });
+}
+
+// Custom Browser Notification (No URL copy message)---
+
+
+function showCustomNotification(title, message) {
+  if (!("Notification" in window)) {
+    console.log("Browser doesn't support notifications");
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    createCustomNotification(title, message);
+  } else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then(permission => {
+      if (permission === "granted") {
+        createCustomNotification(title, message);
+      }
+    });
+  }
+}
+
+function createCustomNotification(title, message) {
+  // Create custom notification without service worker
+  const notification = new Notification(title, {
+    body: message,
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-72x72.png',
+    tag: 'bmdsss-custom',
+    requireInteraction: true,
+    silent: false
+  });
+
+  notification.onclick = () => {
+    window.focus();
+    notification.close();
+    
+    // Specific actions based on message
+    if (message.includes('transfer')) {
+      showSection('dashboard-section');
+    } else if (message.includes('approved')) {
+      updateTransactionList();
+    }
+  };
+
+  setTimeout(() => notification.close(), 6000);
+}
+
+// transaction notification functions-----
+
+// Enhanced notification functions for specific events
+async function sendTransactionNotification(userAccount, message) {
+  // 1. Database-এ save করো
+  await addNotification(message, userAccount);
+  
+  // 2. Real-time custom notification show করো
+  if (currentUser === userAccount || userAccount === 'admin') {
+    showCustomNotification('BMDSSS 💰', message);
+  }
+  
+  // 3. Notification badge update করো
+  updateNotificationBadge(1, true);
+}
+
+// Specific notification functions
+async function notifyTransferRequest(fromUser, toUser, amount) {
+  const message = `🔄 ${fromUser} wants to transfer ৳${amount} to ${toUser}`;
+  await sendTransactionNotification('admin', message);
+}
+
+async function notifyApproval(userAccount, requestType, amount = null) {
+  const amountText = amount ? ` of ৳${amount}` : '';
+  const message = `✅ Your ${requestType} request${amountText} has been approved!`;
+  await sendTransactionNotification(userAccount, message);
+}
+
+async function notifyMoneyAdded(userAccount, amount) {
+  const message = `💸 ৳${amount} has been added to your account`;
+  await sendTransactionNotification(userAccount, message);
+}
+
+// Notification badge update -----
+
+// App Icon Badge System
+let notificationCount = 0;
+
+function updateNotificationBadge(count = 1, increment = false) {
+  if (increment) {
+    notificationCount += count;
+  } else {
+    notificationCount = count;
+  }
+  
+  // Update UI badge
+  const badge = document.getElementById('notification-badge');
+  if (badge) {
+    if (notificationCount > 0) {
+      badge.style.display = 'block';
+      badge.textContent = notificationCount > 9 ? '9+' : notificationCount.toString();
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+  
+  // Update app icon badge (if supported)
+  updateAppIconBadge();
+}
+
+function updateAppIconBadge() {
+  if ('setAppBadge' in navigator) {
+    navigator.setAppBadge(notificationCount).catch(error => {
+      console.log('App badge not supported:', error);
+    });
+  }
+}
+
+function clearNotifications() {
+  notificationCount = 0;
+  updateNotificationBadge(0);
+  
+  if ('clearAppBadge' in navigator) {
+    navigator.clearAppBadge().catch(error => {
+      console.log('Clear app badge error:', error);
+    });
+  }
+}
+
+
