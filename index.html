@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <!-- PWA Meta Tags -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#007bff" />
+  <meta name="description" content="BMDSSS SAVINGS">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- iOS Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BMDSSS SAVINGS">
+  <link rel="apple-touch-icon" href="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/jpeg" href="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg">
+  <!-- Favicon -->
+  <link rel="icon" type="image/jpeg" href="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg">
+  <title>BMDSSS SAVINGS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="icon" type="image/png" href="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" />
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
+    <div class="container">
+      <a class="navbar-brand d-flex align-items-center" href="#">
+        <img src="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" alt="Logo" height="40px" weight="40px">
+        <span class="ms-2 fw-bold text-primary">BMDSSS SAVINGS</span>
+      </a>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+
+    <!-- LOGIN SECTION -->
+    <div id="login-section" class="card p-4">
+      <img src="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" alt="logo" height="150px" width="150px"
+        class="mx-auto ">
+      <h3 class="text-center mb-3 text-primary">Welcome Back</h3>
+      <input type="text" id="login-account" class="form-control mb-2" placeholder="Account Number (BMDS...)">
+      <input type="password" id="login-password" class="form-control mb-2" placeholder="Password">
+      <button class="btn btn-primary w-100 mb-2" onclick="login()">Login</button>
+      <button class="btn btn-secondary w-100 mt-2" onclick="showSection('signup-section')">Create Account
+        Request</button>
+      <button class="btn btn-link w-100" onclick="forgotPassword()">Forgot Password?</button>
+
+    </div>
+
+    <!-- SIGNUP -->
+    <div id="signup-section" class="card p-4 hidden">
+      <h3 class="text-center mb-3">Create Account Request</h3>
+      <input type="text" id="signup-name" class="form-control mb-2" placeholder="Full Name">
+      <input type="text" id="signup-display" class="form-control mb-2" placeholder="Display Name">
+      <input type="email" id="signup-email" class="form-control mb-2" placeholder="Email">
+      <input type="text" id="signup-phone" class="form-control mb-2" placeholder="Phone Number">
+      <input type="password" id="signup-password" class="form-control mb-2" placeholder="Password">
+      <!-- Terms and Conditions PDF Upload -->
+      <div class="terms-section mt-3 mb-3">
+        <h6 class="mb-2">Terms and Conditions</h6>
+        <div class="mb-2">
+          <a href="https://drive.google.com/file/d/11B21vcTmEwxjyYOfSEFYLy_jXSMlDrHl/view" onclick="viewTermsPDF()"
+            class="text-primary text-decoration-none">
+            <i class="bi bi-file-earmark-pdf"></i> View Terms and Conditions (PDF)
+          </a>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="terms-agree" required>
+          <label class="form-check-label" for="terms-agree">
+            I have read and agree to the Terms and Conditions
+          </label>
+        </div>
+      </div>
+      <small class="text-muted mb-3">Account number will be provided by admin after approval</small>
+      <button class="btn btn-success w-100 mb-2" onclick="signup()">Submit Request</button>
+      <button class="btn btn-link w-100" onclick="showSection('login-section')">Back to Login</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard-section" class="card p-4 hidden">
+      <h3 class="text-center mb-3 fs-3 text-primary">Dashboard</h3>
+      <button class="btn btn-outline-primary position-relative" onclick="showNotificationPanel()">
+        <i class="bi bi-bell"></i>
+        <span id="notification-badge"
+          class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+          style="display: none;">
+          0
+        </span>
+      </button>
+      <p><b>Account No:</b> <span id="user-account"></span></p>
+      <p><b>User:</b> <span id="user-name"></span></p>
+      <p><b>Balance:</b> ৳<span id="user-balance">0</span></p>
+      <hr>
+
+      <div class="d-flex gap-2 mt-3 flex-wrap action-buttons justify-content-center">
+        <button class="btn btn-outline-primary flex-fill" data-bs-toggle="modal" data-bs-target="#addMoneyModal"><i
+            class="bi bi-plus-circle"></i> Add Money</button>
+        <button class="btn btn-outline-success flex-fill" data-bs-toggle="modal" data-bs-target="#donationModal"><i
+            class="bi bi-heart"></i> Donate</button>
+        <button class="btn btn-outline-dark flex-fill" data-bs-toggle="modal" data-bs-target="#transferModal"><i
+            class="bi bi-arrow-left-right"></i> Transfer</button>
+        <button class="btn btn-outline-warning flex-fill" data-bs-toggle="modal" data-bs-target="#settingsModal"><i
+            class="bi bi-gear"></i> Settings</button>
+        <button class="btn btn-outline-secondary flex-fill" data-bs-toggle="modal" data-bs-target="#feedbackModal"><i
+            class="bi bi-chat-dots"></i> Feedback</button>
+        <button class="btn btn-outline-danger flex-fill " onclick="logout()">Logout</button>
+      </div>
+
+      <hr>
+
+      <h6>Notifications:</h6>
+      <div id="notifications"></div>
+
+      <h5>Transactions</h5>
+      <ul id="transaction-list" class="list-group mb-3"></ul>
+
+    </div>
+
+    <!-- ADMIN PANEL -->
+    <div id="admin-section" class="card p-4 hidden">
+      <h3 class="text-center mb-3">Admin Panel</h3>
+      <!-- pending  request -->
+      <h5>Pending Requests</h5>
+      <ul id="pendingRequests" class="list-group mb-3"></ul>
+      <hr>
+      <!-- Send Specific Notification -->
+      <div class="mb-4">
+        <h5>Send Notification to Specific User</h5>
+        <div class="row">
+          <div class="col-md-6">
+            <select id="specific-user-select" class="form-select mb-2">
+              <option value="">Select User</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <input type="text" id="specific-notification" class="form-control mb-2" placeholder="Notification message">
+          </div>
+        </div>
+        <button class="btn btn-info w-100" onclick="sendSpecificNotification()">Send to Selected User</button>
+      </div>
+      <hr>
+      <!-- Send Global Notification -->
+      <div class="mb-4">
+        <h5>Send Global Notification</h5>
+        <input type="text" id="global-notification" class="form-control mb-2" placeholder="Notification message">
+        <button class="btn btn-success mb-2" onclick="sendNotice()">Send Notice to All Users</button>
+        <button class="btn btn-danger w-100" onclick="logout()">Logout</button>
+      </div>
+      <hr>
+      <!-- feedback -->
+      <h5>Feedback Notifications</h5>
+      <ul id="feedbackList" class="list-group mb-3"></ul>
+      <!-- all account -->
+      <h5>All Accounts</h5>
+      <ul id="allAccountsList" class="list-group mb-3"></ul>
+
+
+      <!-- Notification Panel -->
+      <div id="notification-panel" class="card hidden">
+        <div class="card-header d-flex justify-content-between">
+          <h5>Notifications</h5>
+          <button type="button" class="btn-close" onclick="hideNotificationPanel()"></button>
+        </div>
+        <div class="card-body">
+          <div id="notifications-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODALS (Same as before, keep all your existing modals) -->
+  <div class="modal fade" id="addMoneyModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5>Add Money</h5>
+        </div>
+        <div class="modal-body">
+          <input type="number" id="addAmount" class="form-control mb-2" placeholder="Enter amount">
+          <select id="addMethod" class="form-select mb-2">
+            <option>Bkash</option>
+            <option>Nagad</option>
+            <option>Rocket</option>
+          </select>
+          <textarea id="addNote" class="form-control" placeholder="Note"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button class="btn btn-success" onclick="requestAddMoney()">Submit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="donationModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5>Donate</h5>
+        </div>
+        <div class="modal-body">
+          <input type="number" id="donateAmount" class="form-control mb-2" placeholder="Enter amount">
+          <textarea id="donateNote" class="form-control" placeholder="Message"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button class="btn btn-danger" onclick="requestDonation()">Submit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="transferModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5>Transfer Money</h5>
+        </div>
+        <div class="modal-body">
+          <input type="text" id="transferTo" class="form-control mb-2" placeholder="Receiver Account No">
+          <input type="number" id="transferAmount" class="form-control mb-2" placeholder="Enter amount">
+          <textarea id="transferNote" class="form-control" placeholder="Message"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button class="btn btn-secondary" onclick="requestTransfer()">Submit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5>Account Settings</h5>
+        </div>
+        <div class="modal-body">
+          <input id="setName" class="form-control mb-2" placeholder="Full Name">
+          <input id="setNumber" class="form-control mb-2" placeholder="Phone Number">
+          <input id="setEmail" class="form-control mb-2" placeholder="Email">
+          <input id="setPassword" type="password" class="form-control mb-2" placeholder="New Password">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button class="btn btn-primary" onclick="requestProfileUpdate()">Send Request</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feedback Modal -->
+  <div class="modal fade" id="feedbackModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5>Send Feedback</h5>
+        </div>
+        <div class="modal-body">
+          <textarea id="feedbackText" class="form-control" placeholder="Write your feedback..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button class="btn btn-success" onclick="sendFeedback()">Submit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE SDK -->
+  <!-- FIREBASE SDK WITH MESSAGING -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+    import { getDatabase, ref, set, get, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
+    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-messaging.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDyU5WvIvsSiH78akJ3GABeTKUa_bOq5-k",
+      authDomain: "bmdsss-savings-5edad.firebaseapp.com",
+      databaseURL: "https://bmdsss-savings-5edad-default-rtdb.firebaseio.com",
+      projectId: "bmdsss-savings-5edad",
+      storageBucket: "bmdsss-savings-5edad.firebasestorage.app",
+      messagingSenderId: "639379436871",
+      appId: "1:639379436871:web:b9eb965d6ad5b5f73b8862"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const messaging = getMessaging(app);
+
+    // Make Firebase available globally
+    window.firebase = {
+      db, ref, set, get, push, onValue, update, remove,
+      messaging, getToken, onMessage
+    };
+
+    console.log('Firebase Messaging loaded successfully');
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="script.js"></script>
+</body>
+
+</html>

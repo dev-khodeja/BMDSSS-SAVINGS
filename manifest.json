@@ -1,0 +1,25 @@
+{
+  "name": "BMDSSS SAVINGS",
+  "short_name": "BMDSSS SAVINGS",
+  "description": "Money management and savings app",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#007bff",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "business", "productivity"]
+}

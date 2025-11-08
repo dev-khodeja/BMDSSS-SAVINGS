@@ -1,0 +1,9 @@
+    body { background: #f8f9fa; }
+    .card { border-radius: 12px; }
+    .hidden { display: none; }
+    .notification { background: #e9f7ef; border: 1px solid #b1dfbb; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
+    .navbar-brand img { height: 40px; }
+    @media (max-width: 576px) {
+      .action-buttons { flex-direction: column; }
+      .action-buttons button { width: 100%; }
+    }
