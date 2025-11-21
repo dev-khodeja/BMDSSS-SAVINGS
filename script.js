@@ -450,7 +450,7 @@ async function updateTransactionList() {
         <div class="fw-bold">${message} ${amount}</div>
         <small class="text-muted">${timestamp}</small>
       </div>
-      <div>
+      <div class="d-flex align-items-center">
         <span class="badge ${message.includes('+') || message.includes('added') || message.includes('Received') ? 'bg-success' : 'bg-danger'} me-2">
           ${message.includes('+') || message.includes('added') || message.includes('Received') ? 'Credit' : 'Debit'}
         </span>
