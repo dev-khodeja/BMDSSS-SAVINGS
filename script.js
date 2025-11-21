@@ -71,23 +71,20 @@ async function deleteFeedbackFromDB(feedbackId) {
 }
 
 // Enhanced Notification Function with FCM
-
 async function addNotification(notification, specificUser = null) {
   console.log('📨 Sending notification:', notification);
   
   const notificationData = {
     message: notification,
-    forUser: specificUser || 'global', // specific user or global
+    forUser: specificUser || 'global',
     timestamp: Date.now(),
     read: false,
     type: specificUser ? 'personal' : 'global'
   };
   
-  // Database-এ save করো
   const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
   await window.firebase.push(notificationsRef, notificationData);
   
-  // Immediate browser notification show করো
   if (!specificUser || specificUser === currentUser) {
     const title = specificUser ? 'BMDSSS 🔔' : 'BMDSSS 📢';
     showBrowserNotification(title, notification);
@@ -108,6 +105,11 @@ async function getNotifications() {
   return notifications;
 }
 
+// Delete notification from database
+async function deleteNotification(notificationId) {
+  await window.firebase.remove(window.firebase.ref(window.firebase.db, 'notifications/' + notificationId));
+}
+
 // Generate account number in sequence BMDSSS0001, BMDSSS0002, etc.
 function generateAccountNumber(users) {
   const accountNumbers = Object.keys(users)
@@ -123,6 +125,26 @@ function generateAccountNumber(users) {
   return 'BMDSSS' + nextNumber;
 }
 
+// Generate 4-digit transfer code
+function generateTransferCode() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// Validation Functions
+function validateEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+function validateBangladeshiPhone(phone) {
+  const phoneRegex = /^(?:\+88|01)[3-9]\d{8}$/;
+  return phoneRegex.test(phone.replace(/\s/g, ''));
+}
+
+function validatePassword(password) {
+  return password.length >= 8;
+}
+
 // UI Helper
 function showSection(id){ 
   document.querySelectorAll('.card').forEach(c=>c.classList.add('hidden')); 
@@ -131,7 +153,6 @@ function showSection(id){
 
 // Function to view Terms PDF
 function viewTermsPDF() {
-  // Open PDF in new tab
   window.open('https://drive.google.com/file/d/11B21vcTmEwxjyYOfSEFYLy_jXSMlDrHl/view', '_blank');
 }
 
@@ -143,30 +164,35 @@ async function signup(){
   const p = document.getElementById('signup-phone').value.trim();
   const pw = document.getElementById('signup-password').value;
   
-  // Check if terms are agreed (REQUIRED)
   const termsAgreed = document.getElementById('terms-agree').checked;
   
   if(!n || !d || !e || !p || !pw) {
-    return alert('Please fill all fields');
+    return alert('❌ Please fill all fields');
   }
   
-  // Password validation - at least 8 characters
-  if(pw.length < 8) {
-    return alert('Password must be at least 8 characters long');
+  if(!validateEmail(e)) {
+    return alert('❌ Please enter a valid email address');
+  }
+  
+  if(!validateBangladeshiPhone(p)) {
+    return alert('❌ Please enter a valid Bangladeshi phone number (e.g., 01712345678 or +8801712345678)');
+  }
+  
+  if(!validatePassword(pw)) {
+    return alert('❌ Password must be at least 8 characters long');
   }
   
   if(!termsAgreed) {
-    return alert('You must agree to the Terms and Conditions');
+    return alert('❌ You must agree to the Terms and Conditions');
   }
   
-  // Check for duplicate phone, email, display name
   const users = await getUsers();
   const isDuplicate = Object.values(users).some(user => 
     user.phone === p || user.email === e || user.display === d
   );
   
   if(isDuplicate) {
-    return alert('Phone number, email, or display name already exists. Please use different information.');
+    return alert('❌ Phone number, email, or display name already exists. Please use different information.');
   }
   
   await addRequest({
@@ -178,9 +204,8 @@ async function signup(){
     password: pw
   });
   
-  alert('Account request sent to Admin! You will receive account number after approval.');
+  alert('✅ Account request sent to Admin! You will receive account number after approval.');
   
-  // Clear form
   document.getElementById('signup-name').value = '';
   document.getElementById('signup-display').value = '';
   document.getElementById('signup-email').value = '';
@@ -191,8 +216,45 @@ async function signup(){
   showSection('login-section');
 }
 
+// Login
+// Auto Logout System
+let logoutTimer;
+const LOGOUT_TIME = 15 * 60 * 1000; // 15 minutes in milliseconds
 
-// Login - Updated with FCM
+// Reset timer on user activity
+function resetLogoutTimer() {
+  if (currentUser) {
+    clearTimeout(logoutTimer);
+    logoutTimer = setTimeout(autoLogout, LOGOUT_TIME);
+  }
+}
+
+// Auto logout function
+function autoLogout() {
+  if (currentUser) {
+    alert('🕒 Session expired due to inactivity. Please login again.');
+    logout();
+  }
+}
+
+// Track user activity
+function setupActivityTracking() {
+  // Track mouse movements
+  document.addEventListener('mousemove', resetLogoutTimer);
+  
+  // Track key presses
+  document.addEventListener('keypress', resetLogoutTimer);
+  
+  // Track clicks
+  document.addEventListener('click', resetLogoutTimer);
+  
+  // Track touch events for mobile
+  document.addEventListener('touchstart', resetLogoutTimer);
+  
+  console.log('🕒 Auto logout timer started (15 minutes)');
+}
+
+// Update login function to start timer
 async function login(){
   const accountNo = document.getElementById('login-account').value.trim();
   const pw = document.getElementById('login-password').value.trim();
@@ -200,14 +262,13 @@ async function login(){
   // Admin login
   if(accountNo === 'admin' && pw === 'admin726') {
     showAdminPanel();
-    // Initialize FCM for admin too
-    setTimeout(() => setupFCMNotifications(), 1000);
+    setupActivityTracking();
+    resetLogoutTimer();
     return;
   }
   
-  // Check if it's a valid BMDSSS account number
   if(!accountNo.startsWith('BMDSSS')) {
-    alert('Please enter a valid BMDSSS account number (e.g., BMDSSS0001)');
+    alert('❌ Please enter a valid BMDSSS account number (e.g., BMDSSS0001)');
     return;
   }
   
@@ -215,13 +276,16 @@ async function login(){
   const user = users[accountNo];
   
   if(!user || user.password !== pw) {
-    alert('Invalid account number or password');
+    alert('❌ Invalid account number or password');
     return;
   }
   
   currentUser = accountNo;
   
-  // Initialize FCM Notifications
+  // Start auto logout timer
+  setupActivityTracking();
+  resetLogoutTimer();
+  
   setTimeout(() => {
     setupFCMNotifications().then(success => {
       if (success) {
@@ -230,7 +294,6 @@ async function login(){
     });
   }, 1000);
   
-  // Check if using temporary password
   if(user.tempPassword) {
     alert('🔐 You are using a temporary password. Please change your password in Settings for security.');
   }
@@ -238,20 +301,90 @@ async function login(){
   showDashboard(user);
 }
 
-// Forgot Password - Updated for Account Number with simple demo password
+// Update logout function to clear timer
+function logout() {
+  // Clear the auto logout timer
+  clearTimeout(logoutTimer);
+  
+  // Remove activity event listeners (optional)
+  document.removeEventListener('mousemove', resetLogoutTimer);
+  document.removeEventListener('keypress', resetLogoutTimer);
+  document.removeEventListener('click', resetLogoutTimer);
+  document.removeEventListener('touchstart', resetLogoutTimer);
+  
+  currentUser = null;
+  localStorage.removeItem('currentUser');
+  showSection('login-section');
+  
+  console.log('👋 User logged out');
+}
+
+// Update showDashboard to start timer
+function showDashboard(user) {
+  showSection('dashboard-section');
+  currentUser = user.accountNo;
+  localStorage.setItem('currentUser', user.accountNo);
+
+  document.getElementById('user-account').innerText = user.accountNo;
+  document.getElementById('user-name').innerText = user.display || user.name;
+  document.getElementById('user-balance').innerText = user.balance || 0;
+
+  updateTransactionList();
+  updateNotifications();
+  
+  // Start auto logout timer for dashboard
+  resetLogoutTimer();
+}
+
+// Update showAdminPanel to start timer
+async function showAdminPanel(){
+  showSection('admin-section');
+  await updateAdminPanel();
+  
+  const requestsRef = window.firebase.ref(window.firebase.db, 'requests');
+  window.firebase.onValue(requestsRef, () => updateAdminPanel());
+  
+  const feedbacksRef = window.firebase.ref(window.firebase.db, 'feedbacks');
+  window.firebase.onValue(feedbacksRef, () => updateAdminPanel());
+  
+  // Start auto logout timer for admin panel
+  resetLogoutTimer();
+}
+
+// Check for existing session on page load
+document.addEventListener('DOMContentLoaded', function() {
+  setupRealTimeListeners();
+  
+  const savedUser = localStorage.getItem('currentUser');
+  if (savedUser) {
+    getUsers().then(users => {
+      if (users[savedUser]) {
+        currentUser = savedUser;
+        showDashboard(users[savedUser]);
+        
+        // Start auto logout timer for returning users
+        setupActivityTracking();
+        resetLogoutTimer();
+      }
+    });
+  }
+});
+
+// Make functions available globally
+window.resetLogoutTimer = resetLogoutTimer;
+// Forgot Password
 async function forgotPassword(){
   const accountNo = document.getElementById('login-account').value.trim();
-  if(!accountNo) return alert('Enter your account number first!');
+  if(!accountNo) return alert('❌ Enter your account number first!');
   
   if(!accountNo.startsWith('BMDSSS')) {
-    alert('Please enter a valid BMDSSS account number');
+    alert('❌ Please enter a valid BMDSSS account number');
     return;
   }
   
-  // Check if account exists
   const users = await getUsers();
   if (!users[accountNo]) {
-    alert('Account number not found!');
+    alert('❌ Account number not found!');
     return;
   }
   
@@ -260,11 +393,11 @@ async function forgotPassword(){
     user: accountNo
   });
   
-  alert('Password reset request sent to Admin! You will receive a temporary password (123) after approval.');
+  alert('✅ Password reset request sent to Admin! You will receive a temporary password (123) after approval.');
   updateAdminPanel();
 }
 
-// Dashboard - Updated for Account Number
+// Dashboard
 function showDashboard(user) {
   showSection('dashboard-section');
   currentUser = user.accountNo;
@@ -278,7 +411,7 @@ function showDashboard(user) {
   updateNotifications();
 }
 
-// Updated Transaction List to show proper history
+// Updated Transaction List with delete functionality
 async function updateTransactionList() {
   const txList = document.getElementById('transaction-list');
   txList.innerHTML = '';
@@ -291,36 +424,40 @@ async function updateTransactionList() {
     return;
   }
 
-  const transactions = Object.values(user.transactions);
+  const transactions = Object.entries(user.transactions);
 
   if (transactions.length === 0) {
     txList.innerHTML = `<li class='list-group-item text-muted'>No transactions yet.</li>`;
     return;
   }
 
-  // Sort by timestamp
   transactions.sort((a, b) => {
-    const timeA = a.timestamp || (typeof a === 'string' ? 0 : Date.now());
-    const timeB = b.timestamp || (typeof b === 'string' ? 0 : Date.now());
+    const timeA = a[1].timestamp || 0;
+    const timeB = b[1].timestamp || 0;
     return timeB - timeA;
   });
 
-  transactions.forEach(t => {
+  transactions.forEach(([transactionId, t]) => {
     const li = document.createElement('li');
     li.className = 'list-group-item d-flex justify-content-between align-items-center';
     
-    const message = typeof t === 'string' ? t : t.message;
+    const message = t.message;
     const timestamp = t.timestamp ? new Date(t.timestamp).toLocaleString() : '';
     const amount = t.amount ? `৳${t.amount}` : '';
     
     li.innerHTML = `
-      <div>
+      <div class="flex-grow-1">
         <div class="fw-bold">${message} ${amount}</div>
         <small class="text-muted">${timestamp}</small>
       </div>
-      <span class="badge ${message.includes('+') || message.includes('added') || message.includes('Received') ? 'bg-success' : 'bg-danger'}">
-        ${message.includes('+') || message.includes('added') || message.includes('Received') ? 'Credit' : 'Debit'}
-      </span>
+      <div>
+        <span class="badge ${message.includes('+') || message.includes('added') || message.includes('Received') ? 'bg-success' : 'bg-danger'} me-2">
+          ${message.includes('+') || message.includes('added') || message.includes('Received') ? 'Credit' : 'Debit'}
+        </span>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteTransaction('${transactionId}')" title="Delete Transaction">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
     `;
     txList.appendChild(li);
   });
@@ -328,46 +465,115 @@ async function updateTransactionList() {
   document.getElementById('user-balance').innerText = user.balance || 0;
 }
 
-// User Requests - Updated for Account Number
+// Delete transaction
+async function deleteTransaction(transactionId) {
+  if (!confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    await window.firebase.remove(window.firebase.ref(window.firebase.db, `users/${currentUser}/transactions/${transactionId}`));
+    alert('✅ Transaction deleted successfully!');
+    updateTransactionList();
+  } catch (error) {
+    alert('❌ Error deleting transaction: ' + error.message);
+  }
+}
+
+// User Requests
+
+// Add Money Request
+// Add Money Request - FIXED
+// Add Money Request - UPDATED: Only phone number, no note
 async function requestAddMoney(){
-  const a = +document.getElementById('addAmount').value,
-        m = document.getElementById('addMethod').value,
-        n = document.getElementById('addNote').value;
+  const a = +document.getElementById('addAmount').value;
+  const m = document.getElementById('addMethod').value;
+  const phone = document.getElementById('addPhoneNumber').value.trim();
         
-  if(!a || a<=0) return alert('Invalid amount!');
+  if(!a || a<=0) return alert('❌ Invalid amount!');
+  
+  if(!phone) {
+    return alert('❌ Please enter your phone/account number');
+  }
   
   await addRequest({
     user: currentUser,
     type: 'Add',
     amount: a,
     method: m,
-    note: n
+    phoneNumber: phone // Send phone number to admin
   });
   
-  alert('Request sent to Admin!');
+  alert('✅ Add money request sent to Admin!\nAmount: ৳' + a + '\nMethod: ' + m + '\nNumber: ' + phone);
+  
+  // Clear form
   document.getElementById('addAmount').value = '';
-  document.getElementById('addNote').value = '';
+  document.getElementById('addPhoneNumber').value = '';
   
   const modal = bootstrap.Modal.getInstance(document.getElementById('addMoneyModal'));
   modal.hide();
   
   updateAdminPanel();
 }
+// Withdraw Money Request - NEW FUNCTION
+async function requestWithdrawMoney(){
+  const a = +document.getElementById('withdrawAmount').value,
+        m = document.getElementById('withdrawMethod').value,
+        n = document.getElementById('withdrawNote').value;
+        
+  if(!a || a<=0) return alert('❌ Invalid amount!');
+  
+  // Check if user has sufficient balance
+  const users = await getUsers();
+  const user = users[currentUser];
+  if ((user.balance || 0) < a) {
+    return alert('❌ Insufficient balance!');
+  }
+  
+  await addRequest({
+    user: currentUser,
+    type: 'Withdraw',
+    amount: a,
+    method: m,
+    note: n
+  });
+  
+  alert('✅ Withdraw money request sent to Admin! Amount: ৳' + a + ' via ' + m);
+  
+  document.getElementById('withdrawAmount').value = '';
+  document.getElementById('withdrawNote').value = '';
+  
+  const modal = bootstrap.Modal.getInstance(document.getElementById('withdrawModal'));
+  modal.hide();
+  
+  updateAdminPanel();
+}
 
+
+// Donation Request - Fixed to always go to BMDSSS0001
 async function requestDonation(){
   const a = +document.getElementById('donateAmount').value,
         n = document.getElementById('donateNote').value;
         
-  if(!a || a<=0) return alert('Invalid amount!');
+  if(!a || a<=0) return alert('❌ Invalid amount!');
+  
+  // Check if user has sufficient balance
+  const users = await getUsers();
+  const user = users[currentUser];
+  if ((user.balance || 0) < a) {
+    return alert('❌ Insufficient balance!');
+  }
   
   await addRequest({
     user: currentUser,
     type: 'Donate',
     amount: a,
-    note: n
+    note: n,
+    to: 'BMDSSS0001' // Always donate to BMDSSS0001
   });
   
-  alert('Donation request sent!');
+  alert('✅ Donation request sent to Admin! Amount: ৳' + a + ' to BMDSSS0001');
+  
   document.getElementById('donateAmount').value = '';
   document.getElementById('donateNote').value = '';
   
@@ -377,46 +583,53 @@ async function requestDonation(){
   updateAdminPanel();
 }
 
-// Example: Transfer Request-এ notification add করো
+// Transfer Request with 4-digit code
+// Transfer Request with 4-digit code - FIXED
 async function requestTransfer(){
   const to = document.getElementById('transferTo').value.trim(),
-        a = +document.getElementById('transferAmount').value;
+        a = +document.getElementById('transferAmount').value,
+        code = document.getElementById('transferCode').value.trim();
         
-  if(!to || !a || a<=0) return alert('Invalid data!');
+  if(!to || !a || a<=0) return alert('❌ Invalid data!');
   
-  // Check if recipient account exists
+  if(!to.startsWith('BMDSSS')) {
+    return alert('❌ Please enter a valid BMDSSS account number');
+  }
+  
+  if(!code || code.length !== 4 || isNaN(code)) {
+    return alert('❌ Please enter a valid 4-digit transfer code!');
+  }
+  
   const users = await getUsers();
   if (!users[to]) {
-    alert('Recipient account not found!');
+    alert('❌ Recipient account not found!');
     return;
   }
   
   if (to === currentUser) {
-    alert('Cannot transfer to your own account!');
+    alert('❌ Cannot transfer to your own account!');
     return;
+  }
+  
+  // Check if user has sufficient balance
+  const user = users[currentUser];
+  if ((user.balance || 0) < a) {
+    return alert('❌ Insufficient balance!');
   }
   
   await addRequest({
     user: currentUser,
     type: 'Transfer',
     to: to,
-    amount: a
+    amount: a,
+    transferCode: code // Include 4-digit code in request
   });
-
   
-  // 🔥 NEW: Specific notification
-  await notifyTransferRequest(currentUser, to, a);
-  // 🔥 NEW: Real-time notification for admin
-  await addNotification(
-    `🔄 ${currentUser} requested to transfer ৳${a} to ${to}`,
-    'admin' // Admin-কে notify করবে
-  );
+  alert('✅ Transfer request sent to Admin! Amount: ৳' + a + ' to ' + to + '\nTransfer Code: ' + code);
   
-  alert('Transfer request sent!');
-  
-  // Clear form
   document.getElementById('transferTo').value = '';
   document.getElementById('transferAmount').value = '';
+  document.getElementById('transferCode').value = '';
   
   const modal = bootstrap.Modal.getInstance(document.getElementById('transferModal'));
   modal.hide();
@@ -424,21 +637,36 @@ async function requestTransfer(){
   updateAdminPanel();
 }
 
-// Profile Update with duplicate check - UPDATED FOR PASSWORD RESET
+// Generate random 4-digit code for transfer
+function generateTransferCodeInput() {
+  const code = generateTransferCode();
+  document.getElementById('transferCode').value = code;
+  alert(`🔐 Your transfer code: ${code}\n\nPlease remember this code. Admin will ask for verification.`);
+}
+
+// Profile Update
 async function requestProfileUpdate(){
   const name = document.getElementById('setName').value.trim();
   const number = document.getElementById('setNumber').value.trim();
   const email = document.getElementById('setEmail').value.trim();
   const password = document.getElementById('setPassword').value;
   
-  // If password is being changed, validate it
-  if(password) {
-    if(password.length < 8) {
-      return alert('Password must be at least 8 characters long');
-    }
+  if(!name && !number && !email && !password) {
+    return alert('❌ Please fill at least one field to update');
   }
   
-  // Check for duplicates (excluding current user)
+  if(email && !validateEmail(email)) {
+    return alert('❌ Please enter a valid email address');
+  }
+  
+  if(number && !validateBangladeshiPhone(number)) {
+    return alert('❌ Please enter a valid Bangladeshi phone number (e.g., 01712345678 or +8801712345678)');
+  }
+  
+  if(password && !validatePassword(password)) {
+    return alert('❌ Password must be at least 8 characters long');
+  }
+  
   const users = await getUsers();
   const otherUsers = Object.entries(users).filter(([accNo, user]) => accNo !== currentUser);
   
@@ -449,7 +677,7 @@ async function requestProfileUpdate(){
   );
   
   if(isDuplicate) {
-    return alert('Phone number, email, or display name already exists. Please use different information.');
+    return alert('❌ Phone number, email, or display name already exists. Please use different information.');
   }
   
   const updateData = {
@@ -463,9 +691,9 @@ async function requestProfileUpdate(){
   if(password) updateData.password = password;
   
   await addRequest(updateData);
-  alert('Profile update request sent to Admin!');
   
-  // Clear form and close modal
+  alert('✅ Profile update request sent to Admin!');
+  
   document.getElementById('setName').value = '';
   document.getElementById('setNumber').value = '';
   document.getElementById('setEmail').value = '';
@@ -480,14 +708,14 @@ async function requestProfileUpdate(){
 // Feedback
 async function sendFeedback(){
   const txt = document.getElementById('feedbackText').value.trim();
-  if(!txt) return alert('Please enter feedback!');
+  if(!txt) return alert('❌ Please enter feedback!');
   
   await addFeedback({
     user: currentUser,
     text: txt
   });
   
-  alert('Feedback sent to Admin!');
+  alert('✅ Feedback sent to Admin!');
   document.getElementById('feedbackText').value = '';
   
   const modal = bootstrap.Modal.getInstance(document.getElementById('feedbackModal'));
@@ -496,7 +724,51 @@ async function sendFeedback(){
   updateAdminPanel();
 }
 
-// Admin Panel - Updated with new features
+// Delete user's own notification
+async function deleteUserNotification(notificationId) {
+  if (!confirm('Are you sure you want to delete this notification?')) {
+    return;
+  }
+  
+  try {
+    await deleteNotification(notificationId);
+    alert('✅ Notification deleted successfully!');
+    updateNotifications();
+  } catch (error) {
+    alert('❌ Error deleting notification: ' + error.message);
+  }
+}
+
+// Update Notifications with delete buttons
+async function updateNotifications() {
+  const notifications = await getNotifications();
+  const notificationsContainer = document.getElementById('notifications');
+  
+  if (notifications.length === 0) {
+    notificationsContainer.innerHTML = '<div class="text-muted">No notifications</div>';
+  } else {
+    const userNotifications = notifications.filter(n => 
+      n.type === 'global' || (n.type === 'personal' && n.forUser === currentUser)
+    );
+    
+    const recentNotifications = userNotifications
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 5);
+    
+    notificationsContainer.innerHTML = recentNotifications
+      .map(n => `
+        <div class="notification alert alert-info d-flex justify-content-between align-items-center">
+          <span>${n.message}</span>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteUserNotification('${n.id}')" title="Delete Notification">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      `)
+      .join('');
+  }
+}
+
+// Admin Panel
 async function showAdminPanel(){
   showSection('admin-section');
   await updateAdminPanel();
@@ -508,18 +780,16 @@ async function showAdminPanel(){
   window.firebase.onValue(feedbacksRef, () => updateAdminPanel());
 }
 
+// Admin Panel - UPDATED to show phone number in Add Money requests
 async function updateAdminPanel(){
   const requests = await getRequests();
   const feedbacks = await getFeedbacks();
   const users = await getUsers();
   
-  // Update User Dropdown for Specific Notifications
   updateUserDropdown(users);
-  
-  // Update All Accounts List with full details and delete buttons
   updateAllAccountsList(users);
   
-  // Update Requests List
+  // Update Requests List with phone number display
   const l = document.getElementById('pendingRequests');
   l.innerHTML = '';
   
@@ -531,8 +801,26 @@ async function updateAdminPanel(){
     pendingRequests.forEach((r) => {
       const li = document.createElement('li');
       li.className = 'list-group-item';
+      
+      let requestDetails = `<div><b>${r.type}</b>${r.user?` by <b>${r.user}</b>`:''}${r.amount?` - ৳${r.amount}`:''}</div>`;
+      
+      // Show phone number for Add Money requests
+      if (r.type === 'Add' && r.phoneNumber) {
+        requestDetails += `<div class="text-success mt-1"><small>Number: <b>${r.phoneNumber}</b> (${r.method})</small></div>`;
+      }
+      
+      // Show transfer code if available
+      if (r.transferCode) {
+        requestDetails += `<div class="text-warning mt-1"><small>Transfer Code: <b>${r.transferCode}</b></small></div>`;
+      }
+      
+      // Show recipient for transfers and donations
+      if (r.to) {
+        requestDetails += `<div class="text-info mt-1"><small>To: <b>${r.to}</b></small></div>`;
+      }
+      
       li.innerHTML = `
-        <div><b>${r.type}</b>${r.user?` by <b>${r.user}</b>`:''}${r.amount?` - ৳${r.amount}`:''}</div>
+        ${requestDetails}
         <div class='mt-2'>
           <button class='btn btn-sm btn-success me-1' onclick='approveRequest("${r.id}")'>Approve</button>
           <button class='btn btn-sm btn-danger' onclick='rejectRequest("${r.id}")'>Reject</button>
@@ -542,7 +830,7 @@ async function updateAdminPanel(){
     });
   }
   
-  // Update Feedback List
+  // Rest of the updateAdminPanel function remains same...
   const fbList = document.getElementById('feedbackList');
   fbList.innerHTML = '';
   
@@ -558,7 +846,6 @@ async function updateAdminPanel(){
   }
 }
 
-// Update User Dropdown for Specific Notifications
 function updateUserDropdown(users) {
   const userSelect = document.getElementById('specific-user-select');
   userSelect.innerHTML = '<option value="">Select User</option>';
@@ -572,7 +859,6 @@ function updateUserDropdown(users) {
   });
 }
 
-// Update All Accounts List with full user details and delete buttons - MADE RESPONSIVE
 function updateAllAccountsList(users) {
   const accountsList = document.getElementById('allAccountsList');
   accountsList.innerHTML = '';
@@ -620,46 +906,36 @@ function updateAllAccountsList(users) {
   }
 }
 
-
-
-// Delete User Account - 100% SILENT (NO NOTIFICATIONS ANYWHERE)
 async function deleteUserAccount(accountNo) {
   if (!confirm(`⚠️ Delete account ${accountNo}? This action is permanent!`)) {
     return;
   }
   
   try {
-    // Delete from Firebase
     await deleteUser(accountNo);
-    
-    // DO NOT SEND ANY NOTIFICATIONS
-    // Absolutely no addNotification calls here!
-    
     alert(`✅ Account ${accountNo} deleted successfully.`);
     updateAdminPanel();
-    
   } catch (error) {
     alert('❌ Error deleting account: ' + error.message);
   }
 }
 
-// Send Specific Notification
 async function sendSpecificNotification() {
   const selectedUser = document.getElementById('specific-user-select').value;
   const message = document.getElementById('specific-notification').value.trim();
   
   if (!selectedUser) {
-    alert('Please select a user');
+    alert('❌ Please select a user');
     return;
   }
   
   if (!message) {
-    alert('Please enter a notification message');
+    alert('❌ Please enter a notification message');
     return;
   }
   
   await addNotification(`🔔 ${message}`, selectedUser);
-  alert(`Notification sent to ${selectedUser}`);
+  alert(`✅ Notification sent to ${selectedUser}`);
   
   document.getElementById('specific-notification').value = '';
 }
@@ -669,7 +945,7 @@ async function deleteFeedback(feedbackId){
   updateAdminPanel();
 }
 
-// Approve Requests - FIXED: New account notification only goes to specific user
+// Approve Requests - Updated with Withdraw and Transfer Code verification
 async function approveRequest(requestId) {
   const requests = await getRequests();
   const request = requests.find(r => r.id === requestId);
@@ -677,27 +953,229 @@ async function approveRequest(requestId) {
 
   const users = await getUsers();
 
-  // 🔥 NEW: Approval notification
-  if (request.user) {
-    await notifyApproval(request.user, request.type, request.amount);
+  // New Account Creation
+  if (request.type === 'New Account') {
+    const newAccountNumber = generateAccountNumber(users);
+    
+    await saveUser(newAccountNumber, {
+      accountNo: newAccountNumber,
+      username: request.display,
+      password: request.password,
+      balance: 100,
+      transactions: {},
+      display: request.display,
+      name: request.name,
+      email: request.email,
+      phone: request.phone,
+      createdAt: Date.now()
+    });
+
+    await addNotification(`✅ Your account has been approved! Your account number: ${newAccountNumber}`, newAccountNumber);
   }
 
-  // ... তোমার existing approval code ...
+  // Add Money
+  if (request.type === 'Add') {
+    const user = users[request.user];
+    if (user) {
+      const newBalance = (user.balance || 0) + request.amount;
+      const transactionId = Date.now().toString();
+      
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), {
+        balance: newBalance
+      });
+      
+      await window.firebase.set(
+        window.firebase.ref(window.firebase.db, `users/${request.user}/transactions/${transactionId}`),
+        {
+          message: `+৳${request.amount} added via ${request.method}`,
+          amount: request.amount,
+          type: 'add',
+          timestamp: Date.now()
+        }
+      );
+
+      await addNotification(`✅ Add money request approved! ৳${request.amount} added to your account`, request.user);
+    }
+  }
+
+  // Withdraw Money - NEW
+  if (request.type === 'Withdraw') {
+    const user = users[request.user];
+    if (user && (user.balance || 0) >= request.amount) {
+      const newBalance = (user.balance || 0) - request.amount;
+      const transactionId = Date.now().toString();
+      
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), {
+        balance: newBalance
+      });
+      
+      await window.firebase.set(
+        window.firebase.ref(window.firebase.db, `users/${request.user}/transactions/${transactionId}`),
+        {
+          message: `-৳${request.amount} withdrawn via ${request.method}`,
+          amount: request.amount,
+          type: 'withdraw',
+          timestamp: Date.now()
+        }
+      );
+
+      await addNotification(`✅ Withdraw request approved! ৳${request.amount} withdrawn from your account`, request.user);
+    }
+  }
+
+  // Donation - Fixed to BMDSSS0001
+  if (request.type === 'Donate') {
+    const fromUser = users[request.user];
+    const toUser = users['BMDSSS0001']; // Always to BMDSSS0001
+    
+    if (fromUser && toUser && (fromUser.balance || 0) >= request.amount) {
+      const fromNewBalance = (fromUser.balance || 0) - request.amount;
+      const toNewBalance = (toUser.balance || 0) + request.amount;
+      const transactionId = Date.now().toString();
+      
+      // Update sender
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), {
+        balance: fromNewBalance
+      });
+      
+      await window.firebase.set(
+        window.firebase.ref(window.firebase.db, `users/${request.user}/transactions/${transactionId}`),
+        {
+          message: `Donated ৳${request.amount} to BMDSSS0001`,
+          amount: request.amount,
+          type: 'donate',
+          timestamp: Date.now()
+        }
+      );
+      
+      // Update BMDSSS0001
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/BMDSSS0001'), {
+        balance: toNewBalance
+      });
+      
+      await window.firebase.set(
+        window.firebase.ref(window.firebase.db, `users/BMDSSS0001/transactions/${transactionId}_received`),
+        {
+          message: `Received donation ৳${request.amount} from ${request.user}`,
+          amount: request.amount,
+          type: 'donation_received',
+          timestamp: Date.now()
+        }
+      );
+
+      await addNotification(`✅ Donation approved! ৳${request.amount} donated to BMDSSS0001`, request.user);
+      await addNotification(`🎉 Received donation of ৳${request.amount} from ${request.user}`, 'BMDSSS0001');
+    }
+  }
+
+  // Transfer with code verification
+  if (request.type === 'Transfer') {
+    const fromUser = users[request.user];
+    const toUser = users[request.to];
+    
+    if (fromUser && toUser && (fromUser.balance || 0) >= request.amount) {
+      // Verify transfer code (in real scenario, admin would verify manually)
+      if (!request.transferCode) {
+        alert('❌ Transfer code missing! Please reject this request.');
+        return;
+      }
+      
+      const fromNewBalance = (fromUser.balance || 0) - request.amount;
+      const toNewBalance = (toUser.balance || 0) + request.amount;
+      const transactionId = Date.now().toString();
+      
+      // Update sender
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), {
+        balance: fromNewBalance
+      });
+      
+      await window.firebase.set(
+        window.firebase.ref(window.firebase.db, `users/${request.user}/transactions/${transactionId}`),
+        {
+          message: `Sent ৳${request.amount} to ${request.to} (Code: ${request.transferCode})`,
+          amount: request.amount,
+          type: 'transfer_sent',
+          timestamp: Date.now()
+        }
+      );
+      
+      // Update receiver
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.to), {
+        balance: toNewBalance
+      });
+      
+      await window.firebase.set(
+        window.firebase.ref(window.firebase.db, `users/${request.to}/transactions/${transactionId}_received`),
+        {
+          message: `Received ৳${request.amount} from ${request.user}`,
+          amount: request.amount,
+          type: 'transfer_received',
+          timestamp: Date.now()
+        }
+      );
+
+      await addNotification(`✅ Transfer approved! Sent ৳${request.amount} to ${request.to}`, request.user);
+      await addNotification(`💰 Received ৳${request.amount} from ${request.user}`, request.to);
+    }
+  }
+
+  // Forgot Password
+  if (request.type === 'Forgot Password') {
+    const user = users[request.user];
+    if (user) {
+      const demoPassword = "123";
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), {
+        password: demoPassword,
+        tempPassword: true
+      });
+
+      await addNotification(`🔐 Password reset! Your temporary password: 123 (Please change it in settings)`, request.user);
+    }
+  }
+
+  // Profile Update
+  if (request.type === 'Profile Update') {
+    const user = users[request.user];
+    if (user) {
+      const updates = {};
+      if (request.name) updates.name = request.name;
+      if (request.number) updates.phone = request.number;
+      if (request.email) updates.email = request.email;
+      if (request.password) {
+        updates.password = request.password;
+        updates.tempPassword = false;
+      }
+      
+      await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), updates);
+
+      await addNotification(`✅ Profile update approved! Your changes have been applied`, request.user);
+    }
+  }
 
   // Mark request as approved
-    await window.firebase.update(window.firebase.ref(window.firebase.db, 'requests/' + requestId), {
-    status: 'approved', 
+  await window.firebase.update(window.firebase.ref(window.firebase.db, 'requests/' + requestId), {
+    status: 'approved',
     approvedAt: Date.now()
   });
 
+  alert(`✅ Request approved successfully!`);
   updateAdminPanel();
 }
 
 async function rejectRequest(requestId) {
+  const requests = await getRequests();
+  const request = requests.find(r => r.id === requestId);
+  
   await window.firebase.update(window.firebase.ref(window.firebase.db, 'requests/' + requestId), {
     status: 'rejected',
     rejectedAt: Date.now()
   });
+
+  if (request && request.user) {
+    await addNotification(`❌ Your ${request.type} request was rejected by admin`, request.user);
+  }
+
+  alert(`❌ Request rejected!`);
   updateAdminPanel();
 }
 
@@ -706,31 +1184,9 @@ async function sendNotice() {
   const m = prompt('Enter notice for all users:');
   if (m) {
     await addNotification('📢 Admin Notice: ' + m);
-    alert('Notice sent to all users!');
+    alert('✅ Notice sent to all users!');
   }
   updateNotifications();
-}
-
-async function updateNotifications() {
-  const notifications = await getNotifications();
-  const notificationsContainer = document.getElementById('notifications');
-  
-  if (notifications.length === 0) {
-    notificationsContainer.innerHTML = '<div class="text-muted">No notifications</div>';
-  } else {
-    // Show notifications for current user (global + personal)
-    const userNotifications = notifications.filter(n => 
-      n.type === 'global' || (n.type === 'personal' && n.forUser === currentUser)
-    );
-    
-    const recentNotifications = userNotifications
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 5);
-    
-    notificationsContainer.innerHTML = recentNotifications
-      .map(n => `<div class="notification alert alert-info">${n.message}</div>`)
-      .join('');
-  }
 }
 
 function logout() {
@@ -760,7 +1216,6 @@ function setupRealTimeListeners() {
 document.addEventListener('DOMContentLoaded', function() {
   setupRealTimeListeners();
   
-  // Check if user was already logged in
   const savedUser = localStorage.getItem('currentUser');
   if (savedUser) {
     getUsers().then(users => {
@@ -772,6 +1227,351 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
+
+
+
+// -----------Investment Money -----------
+
+// Browser Notification Function
+function showBrowserNotification(title, message) {
+  // Check if browser supports notifications
+  if (!("Notification" in window)) {
+    console.log("This browser does not support notifications");
+    return;
+  }
+
+  // Check if permission is already granted
+  if (Notification.permission === "granted") {
+    new Notification(title, { body: message, icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" });
+  } 
+  // Otherwise, ask for permission
+  else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then(permission => {
+      if (permission === "granted") {
+        new Notification(title, { body: message, icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" });
+      }
+    });
+  }
+}
+
+// Profit/Loss Management System - COMPLETE CODE
+
+// Helper function to calculate total balance of all users
+function calculateTotalBalance(users) {
+  return Object.values(users).reduce((total, user) => {
+    return total + (user.balance || 0);
+  }, 0);
+}
+
+// Load and display investment summary
+async function loadInvestmentSummary() {
+  const users = await getUsers();
+  let totalInvestment = calculateTotalBalance(users);
+  let summaryHTML = '';
+  
+  Object.entries(users).forEach(([accountNo, user]) => {
+    const balance = user.balance || 0;
+    const percentage = totalInvestment > 0 ? (balance / totalInvestment) * 100 : 0;
+    
+    summaryHTML += `
+      <div class="row">
+        <div class="col-6">${accountNo} - ${user.display || user.name}</div>
+        <div class="col-3">৳${balance.toFixed(2)}</div>
+        <div class="col-3">${percentage.toFixed(2)}%</div>
+      </div>
+    `;
+  });
+  
+  document.getElementById('investmentSummary').innerHTML = `
+    <div class="row fw-bold mb-2">
+      <div class="col-6">User</div>
+      <div class="col-3">Investment</div>
+      <div class="col-3">Percentage</div>
+    </div>
+    ${summaryHTML}
+    <div class="row fw-bold mt-2 border-top pt-2">
+      <div class="col-6">TOTAL</div>
+      <div class="col-3">৳${totalInvestment.toFixed(2)}</div>
+      <div class="col-3">100%</div>
+    </div>
+  `;
+}
+
+// Calculate distribution based on investment percentage
+async function distributeMonthlyProfit() {
+  const month = document.getElementById('profitLossMonth').value;
+  const year = document.getElementById('profitLossYear').value;
+  const totalAmount = +document.getElementById('monthlyProfitLoss').value;
+  const serviceChargePercent = +document.getElementById('serviceChargePercent').value || 5;
+  
+  if (!totalAmount || totalAmount <= 0) {
+    return alert('❌ Please enter a valid profit amount');
+  }
+  
+  const users = await getUsers();
+  const totalInvestment = calculateTotalBalance(users);
+  
+  if (totalInvestment <= 0) {
+    return alert('❌ No investment found to distribute profit');
+  }
+  
+  if (!confirm(`💰 Distribute ${month} ${year} Profit?\n\nTotal Profit: ৳${totalAmount.toFixed(2)}\nService Charge: ${serviceChargePercent}%\nTotal Investment: ৳${totalInvestment.toFixed(2)}\n\nThis will update ALL user accounts!`)) {
+    return;
+  }
+  
+  try {
+    const serviceCharge = (totalAmount * serviceChargePercent) / 100;
+    const netProfit = totalAmount - serviceCharge;
+    
+    let distributionSummary = `📊 ${month} ${year} Profit Distribution:\n\n`;
+    distributionSummary += `Total Profit: ৳${totalAmount.toFixed(2)}\n`;
+    distributionSummary += `Service Charge (${serviceChargePercent}%): ৳${serviceCharge.toFixed(2)}\n`;
+    distributionSummary += `Net Profit: ৳${netProfit.toFixed(2)}\n`;
+    distributionSummary += `Total Investment: ৳${totalInvestment.toFixed(2)}\n\n`;
+    distributionSummary += `User Distributions:\n`;
+    
+    for (const [accountNo, user] of Object.entries(users)) {
+      const userInvestment = user.balance || 0;
+      if (userInvestment > 0) {
+        const userPercentage = (userInvestment / totalInvestment) * 100;
+        const userProfit = (userInvestment / totalInvestment) * netProfit;
+        const newBalance = userInvestment + userProfit;
+        const transactionId = `${month}_${year}_${accountNo}_${Date.now()}`;
+        
+        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
+          balance: parseFloat(newBalance.toFixed(2))
+        });
+        
+        await window.firebase.set(
+          window.firebase.ref(window.firebase.db, `users/${accountNo}/transactions/${transactionId}`),
+          {
+            message: `💰 ${month} ${year} Profit Share: +৳${userProfit.toFixed(2)}`,
+            amount: parseFloat(userProfit.toFixed(2)),
+            type: 'monthly_profit',
+            month: month,
+            year: year,
+            timestamp: Date.now()
+          }
+        );
+        
+        await addNotification(`💰 ${month} ${year} Profit: ৳${userProfit.toFixed(2)} added to your account (${userPercentage.toFixed(2)}% share)`, accountNo);
+        
+        distributionSummary += `${accountNo}: ৳${userProfit.toFixed(2)} (${userPercentage.toFixed(2)}%)\n`;
+      }
+    }
+    
+    if (serviceCharge > 0) {
+      const adminAccount = users['BMDSSS0001'];
+      if (adminAccount) {
+        const newAdminBalance = (adminAccount.balance || 0) + serviceCharge;
+        const serviceChargeId = `${month}_${year}_service_${Date.now()}`;
+        
+        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/BMDSSS0001'), {
+          balance: parseFloat(newAdminBalance.toFixed(2))
+        });
+        
+        await window.firebase.set(
+          window.firebase.ref(window.firebase.db, `users/BMDSSS0001/transactions/${serviceChargeId}`),
+          {
+            message: `💼 ${month} ${year} Service Charge: +৳${serviceCharge.toFixed(2)}`,
+            amount: parseFloat(serviceCharge.toFixed(2)),
+            type: 'service_charge',
+            month: month,
+            year: year,
+            timestamp: Date.now()
+          }
+        );
+      }
+    }
+    
+    await addNotification(`🎉 ${month} ${year} Profit Distributed! Total: ৳${totalAmount.toFixed(2)}`);
+    
+    document.getElementById('monthlyProfitLoss').value = '';
+    
+    alert(`✅ ${month} ${year} Profit distributed successfully!\n\n${distributionSummary}`);
+    updateAdminPanel();
+    loadInvestmentSummary();
+    
+  } catch (error) {
+    console.error('Profit distribution error:', error);
+    alert('❌ Error distributing profit: ' + error.message);
+  }
+}
+
+// Distribute Monthly Loss
+async function distributeMonthlyLoss() {
+  const month = document.getElementById('profitLossMonth').value;
+  const year = document.getElementById('profitLossYear').value;
+  const totalAmount = Math.abs(+document.getElementById('monthlyProfitLoss').value);
+  const serviceChargePercent = +document.getElementById('serviceChargePercent').value || 5;
+  
+  if (!totalAmount || totalAmount <= 0) {
+    return alert('❌ Please enter a valid loss amount');
+  }
+  
+  const users = await getUsers();
+  const totalInvestment = calculateTotalBalance(users);
+  
+  if (totalInvestment <= 0) {
+    return alert('❌ No investment found to distribute loss');
+  }
+  
+  if (!confirm(`⚠️ Distribute ${month} ${year} Loss?\n\nTotal Loss: ৳${totalAmount.toFixed(2)}\nService Charge: ${serviceChargePercent}%\nTotal Investment: ৳${totalInvestment.toFixed(2)}\n\nThis will deduct from ALL user accounts!`)) {
+    return;
+  }
+  
+  try {
+    const serviceCharge = (totalAmount * serviceChargePercent) / 100;
+    const totalDeduction = totalAmount + serviceCharge;
+    
+    let distributionSummary = `📊 ${month} ${year} Loss Distribution:\n\n`;
+    distributionSummary += `Total Loss: ৳${totalAmount.toFixed(2)}\n`;
+    distributionSummary += `Service Charge (${serviceChargePercent}%): ৳${serviceCharge.toFixed(2)}\n`;
+    distributionSummary += `Total Deduction: ৳${totalDeduction.toFixed(2)}\n`;
+    distributionSummary += `Total Investment: ৳${totalInvestment.toFixed(2)}\n\n`;
+    distributionSummary += `User Deductions:\n`;
+    
+    for (const [accountNo, user] of Object.entries(users)) {
+      const userInvestment = user.balance || 0;
+      if (userInvestment > 0) {
+        const userPercentage = (userInvestment / totalInvestment) * 100;
+        const userLossShare = (userInvestment / totalInvestment) * totalDeduction;
+        const newBalance = Math.max(0, userInvestment - userLossShare);
+        const transactionId = `${month}_${year}_${accountNo}_${Date.now()}`;
+        
+        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
+          balance: parseFloat(newBalance.toFixed(2))
+        });
+        
+        await window.firebase.set(
+          window.firebase.ref(window.firebase.db, `users/${accountNo}/transactions/${transactionId}`),
+          {
+            message: `📉 ${month} ${year} Loss Share: -৳${userLossShare.toFixed(2)}`,
+            amount: parseFloat(-userLossShare.toFixed(2)),
+            type: 'monthly_loss',
+            month: month,
+            year: year,
+            timestamp: Date.now()
+          }
+        );
+        
+        await addNotification(`📉 ${month} ${year} Loss: ৳${userLossShare.toFixed(2)} deducted from your account (${userPercentage.toFixed(2)}% share)`, accountNo);
+        
+        distributionSummary += `${accountNo}: -৳${userLossShare.toFixed(2)} (${userPercentage.toFixed(2)}%)\n`;
+      }
+    }
+    
+    if (serviceCharge > 0) {
+      const adminAccount = users['BMDSSS0001'];
+      if (adminAccount) {
+        const newAdminBalance = (adminAccount.balance || 0) + serviceCharge;
+        const serviceChargeId = `${month}_${year}_service_${Date.now()}`;
+        
+        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/BMDSSS0001'), {
+          balance: parseFloat(newAdminBalance.toFixed(2))
+        });
+        
+        await window.firebase.set(
+          window.firebase.ref(window.firebase.db, `users/BMDSSS0001/transactions/${serviceChargeId}`),
+          {
+            message: `💼 ${month} ${year} Service Charge: +৳${serviceCharge.toFixed(2)}`,
+            amount: parseFloat(serviceCharge.toFixed(2)),
+            type: 'service_charge',
+            month: month,
+            year: year,
+            timestamp: Date.now()
+          }
+        );
+      }
+    }
+    
+    await addNotification(`📉 ${month} ${year} Loss Applied. Total: ৳${totalAmount.toFixed(2)}`);
+    
+    document.getElementById('monthlyProfitLoss').value = '';
+    
+    alert(`✅ ${month} ${year} Loss distributed successfully!\n\n${distributionSummary}`);
+    updateAdminPanel();
+    loadInvestmentSummary();
+    
+  } catch (error) {
+    console.error('Loss distribution error:', error);
+    alert('❌ Error distributing loss: ' + error.message);
+  }
+}
+
+// Update admin panel to load investment summary
+async function updateAdminPanel(){
+  const requests = await getRequests();
+  const feedbacks = await getFeedbacks();
+  const users = await getUsers();
+  
+  updateUserDropdown(users);
+  updateAllAccountsList(users);
+  loadInvestmentSummary(); // Load investment summary
+  
+  // Update Requests List with phone number display
+  const l = document.getElementById('pendingRequests');
+  l.innerHTML = '';
+  
+  const pendingRequests = requests.filter(r => r.status === 'pending');
+  
+  if (pendingRequests.length === 0) {
+    l.innerHTML = '<li class="list-group-item text-muted">No pending requests</li>';
+  } else {
+    pendingRequests.forEach((r) => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item';
+      
+      let requestDetails = `<div><b>${r.type}</b>${r.user?` by <b>${r.user}</b>`:''}${r.amount?` - ৳${r.amount}`:''}</div>`;
+      
+      // Show phone number for Add Money requests
+      if (r.type === 'Add' && r.phoneNumber) {
+        requestDetails += `<div class="text-success mt-1"><small>Number: <b>${r.phoneNumber}</b> (${r.method})</small></div>`;
+      }
+      
+      // Show transfer code if available
+      if (r.transferCode) {
+        requestDetails += `<div class="text-warning mt-1"><small>Transfer Code: <b>${r.transferCode}</b></small></div>`;
+      }
+      
+      // Show recipient for transfers and donations
+      if (r.to) {
+        requestDetails += `<div class="text-info mt-1"><small>To: <b>${r.to}</b></small></div>`;
+      }
+      
+      li.innerHTML = `
+        ${requestDetails}
+        <div class='mt-2'>
+          <button class='btn btn-sm btn-success me-1' onclick='approveRequest("${r.id}")'>Approve</button>
+          <button class='btn btn-sm btn-danger' onclick='rejectRequest("${r.id}")'>Reject</button>
+        </div>
+      `;
+      l.appendChild(li);
+    });
+  }
+  
+  // Update Feedback List
+  const fbList = document.getElementById('feedbackList');
+  fbList.innerHTML = '';
+  
+  if (feedbacks.length === 0) {
+    fbList.innerHTML = '<li class="list-group-item text-muted">No feedback yet</li>';
+  } else {
+    feedbacks.forEach((f) => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item';
+      li.innerHTML = `💬 <b>${f.user}</b>: ${f.text} <button class='btn btn-sm btn-outline-danger float-end' onclick='deleteFeedback("${f.id}")'>X</button>`;
+      fbList.appendChild(li);
+    });
+  }
+}
+
+// Make functions available globally
+window.distributeMonthlyProfit = distributeMonthlyProfit;
+window.distributeMonthlyLoss = distributeMonthlyLoss;
+window.loadInvestmentSummary = loadInvestmentSummary;
+window.calculateTotalBalance = calculateTotalBalance;
+window.showBrowserNotification = showBrowserNotification;
 // Make functions available globally
 window.signup = signup;
 window.login = login;
@@ -779,6 +1579,7 @@ window.forgotPassword = forgotPassword;
 window.logout = logout;
 window.showSection = showSection;
 window.requestAddMoney = requestAddMoney;
+window.requestWithdrawMoney = requestWithdrawMoney; // NEW
 window.requestDonation = requestDonation;
 window.requestTransfer = requestTransfer;
 window.requestProfileUpdate = requestProfileUpdate;
@@ -791,423 +1592,7 @@ window.sendNotice = sendNotice;
 window.sendSpecificNotification = sendSpecificNotification;
 window.viewTermsPDF = viewTermsPDF;
 window.deleteUserAccount = deleteUserAccount;
-
-
-// For APK
-
-// Service Worker Registration - KEEP THIS
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/sw.js')
-      .then(function(registration) {
-        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-      })
-      .catch(function(error) {
-        console.log('ServiceWorker registration failed: ', error);
-      });
-  });
-}
-
-
-
-// real time notification ---------
-
-
-// Real-time Notification Listener
-function setupNotificationListener() {
-  const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
-  
-  window.firebase.onValue(notificationsRef, (snapshot) => {
-    if (!snapshot.exists()) return;
-    
-    const notifications = [];
-    snapshot.forEach((childSnapshot) => {
-      const notification = childSnapshot.val();
-      notification.id = childSnapshot.key;
-      notifications.push(notification);
-    });
-    
-    // Show real-time notifications
-    showRealTimeNotifications(notifications);
-  });
-}
-
-// Show notifications in real-time
-function showRealTimeNotifications(notifications) {
-  // Filter notifications for current user
-  const userNotifications = notifications.filter(n => 
-    !n.forUser || n.forUser === currentUser || n.forUser === 'global'
-  );
-  
-  // Show latest notification immediately
-  const latestNotification = userNotifications
-    .sort((a, b) => b.timestamp - a.timestamp)[0];
-    
-  if (latestNotification && !latestNotification.read) {
-    showBrowserNotification('BMDSSS 🔔', latestNotification.message);
-    
-    // Mark as read
-    markAsRead(latestNotification.id);
-  }
-  
-  // Update notifications list in UI
-  updateNotificationsList(userNotifications);
-}
-
-// Browser Notification---------
-
-
-// Enhanced Browser Notification Function
-function showBrowserNotification(title, message) {
-  // Check if browser supports notifications
-  if (!("Notification" in window)) {
-    console.log("This browser does not support notifications");
-    return;
-  }
-
-  // Check if permission is already granted
-  if (Notification.permission === "granted") {
-    createNotification(title, message);
-  } 
-  // Otherwise, ask for permission
-  else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then(permission => {
-      if (permission === "granted") {
-        createNotification(title, message);
-      }
-    });
-  }
-}
-
-function createNotification(title, message) {
-  const options = {
-    body: message,
-    icon: '/icons/icon-192x192.png', // তোমার app icon path
-    badge: '/icons/icon-72x72.png',
-    tag: 'bmdsss-notification',
-    requireInteraction: true
-  };
-  
-  const notification = new Notification(title, options);
-  
-  // Notification click handler
-  notification.onclick = function() {
-    window.focus();
-    notification.close();
-  };
-  
-  // Auto close after 5 seconds
-  setTimeout(() => {
-    notification.close();
-  }, 5000);
-}
-
-
-
-// mark as read notification------
-
-async function markAsRead(notificationId) {
-  await window.firebase.update(
-    window.firebase.ref(window.firebase.db, 'notifications/' + notificationId), 
-    { read: true }
-  );
-}
-
-
-
-// existing intialization----
-
-// Initialize real-time listeners when page loads
-// Initialize app
-document.addEventListener('DOMContentLoaded', function() {
-  setupRealTimeListeners();
-  
-  // 🔥 NEW: Setup notifications
-  setupFCMNotifications().then(success => {
-    if (success) {
-      setupForegroundMessages();
-    }
-  });
-  
-  // Request notification permission
-  if ("Notification" in window && Notification.permission === "default") {
-    setTimeout(() => {
-      Notification.requestPermission();
-    }, 2000);
-  }
-  
-  // Check saved user
-  const savedUser = localStorage.getItem('currentUser');
-  if (savedUser) {
-    getUsers().then(users => {
-      if (users[savedUser]) {
-        currentUser = savedUser;
-        showDashboard(users[savedUser]);
-      }
-    });
-  }
-});
-// final implement------
-
-// Notification Panel Functions
-function showNotificationPanel() {
-  document.getElementById('notification-panel').classList.remove('hidden');
-  updateNotifications();
-}
-
-function hideNotificationPanel() {
-  document.getElementById('notification-panel').classList.add('hidden');
-}
-
-// Update Notification Badge
-function updateNotificationBadge(count) {
-  const badge = document.getElementById('notification-badge');
-  if (count > 0) {
-    badge.style.display = 'block';
-    badge.textContent = count;
-  } else {
-    badge.style.display = 'none';
-  }
-}
-
-// Enhanced updateNotifications function
-async function updateNotificationsList(notifications = null) {
-  if (!notifications) {
-    notifications = await getNotifications();
-  }
-  
-  const userNotifications = notifications.filter(n => 
-    !n.forUser || n.forUser === currentUser || n.forUser === 'global'
-  );
-  
-  const unreadCount = userNotifications.filter(n => !n.read).length;
-  updateNotificationBadge(unreadCount);
-  
-  const notificationsList = document.getElementById('notifications-list');
-  notificationsList.innerHTML = '';
-  
-  if (userNotifications.length === 0) {
-    notificationsList.innerHTML = '<div class="text-muted text-center">No notifications</div>';
-    return;
-  }
-  
-  userNotifications
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .forEach(notification => {
-      const notificationElement = document.createElement('div');
-      notificationElement.className = `alert ${notification.read ? 'alert-light' : 'alert-info'} mb-2`;
-      notificationElement.innerHTML = `
-        <div class="d-flex justify-content-between">
-          <div>${notification.message}</div>
-          <small class="text-muted">${new Date(notification.timestamp).toLocaleTimeString()}</small>
-        </div>
-      `;
-      notificationsList.appendChild(notificationElement);
-      
-      // Mark as read when clicked
-      if (!notification.read) {
-        notificationElement.style.cursor = 'pointer';
-        notificationElement.onclick = () => markAsRead(notification.id);
-      }
-    });
-}
-
-
-// FCM ----
-// FCM Notification Setup
-let messaging = null;
-
-async function setupFCMNotifications() {
-  try {
-    // Check if Firebase Messaging is supported
-    if (!window.firebase || !window.firebase.messaging) {
-      console.log('FCM not supported');
-      return false;
-    }
-
-    // Get FCM instance
-    messaging = window.firebase.messaging();
-    
-    // Request notification permission
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      console.log('Notification permission granted');
-      
-      // Get FCM token
-      const token = await messaging.getToken({
-        vapidKey: 'YOUR_VAPID_KEY' // Firebase console theke pabe
-      });
-      
-      if (token) {
-        console.log('FCM Token:', token);
-        await saveFCMToken(token);
-        return true;
-      }
-    }
-    
-    return false;
-  } catch (error) {
-    console.error('FCM setup error:', error);
-    return false;
-  }
-}
-
-// Save FCM token to database
-async function saveFCMToken(token) {
-  if (!currentUser) return;
-  
-  try {
-    await window.firebase.set(
-      window.firebase.ref(window.firebase.db, `users/${currentUser}/fcmToken`),
-      token
-    );
-    console.log('FCM token saved for user:', currentUser);
-  } catch (error) {
-    console.error('Error saving FCM token:', error);
-  }
-}
-
-// Listen for foreground messages
-function setupForegroundMessages() {
-  if (!messaging) return;
-  
-  messaging.onMessage((payload) => {
-    console.log('Foreground message:', payload);
-    
-    // Show custom notification
-    showCustomNotification(
-      payload.notification?.title || 'BMDSSS 🔔',
-      payload.notification?.body || payload.data?.message
-    );
-    
-    // Update notification badge
-    updateNotificationBadge(1, true); // increment by 1
-  });
-}
-
-// Custom Browser Notification (No URL copy message)---
-
-
-function showCustomNotification(title, message) {
-  if (!("Notification" in window)) {
-    console.log("Browser doesn't support notifications");
-    return;
-  }
-
-  if (Notification.permission === "granted") {
-    createCustomNotification(title, message);
-  } else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then(permission => {
-      if (permission === "granted") {
-        createCustomNotification(title, message);
-      }
-    });
-  }
-}
-
-function createCustomNotification(title, message) {
-  // Create custom notification without service worker
-  const notification = new Notification(title, {
-    body: message,
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-72x72.png',
-    tag: 'bmdsss-custom',
-    requireInteraction: true,
-    silent: false
-  });
-
-  notification.onclick = () => {
-    window.focus();
-    notification.close();
-    
-    // Specific actions based on message
-    if (message.includes('transfer')) {
-      showSection('dashboard-section');
-    } else if (message.includes('approved')) {
-      updateTransactionList();
-    }
-  };
-
-  setTimeout(() => notification.close(), 6000);
-}
-
-// transaction notification functions-----
-
-// Enhanced notification functions for specific events
-async function sendTransactionNotification(userAccount, message) {
-  // 1. Database-এ save করো
-  await addNotification(message, userAccount);
-  
-  // 2. Real-time custom notification show করো
-  if (currentUser === userAccount || userAccount === 'admin') {
-    showCustomNotification('BMDSSS 💰', message);
-  }
-  
-  // 3. Notification badge update করো
-  updateNotificationBadge(1, true);
-}
-
-// Specific notification functions
-async function notifyTransferRequest(fromUser, toUser, amount) {
-  const message = `🔄 ${fromUser} wants to transfer ৳${amount} to ${toUser}`;
-  await sendTransactionNotification('admin', message);
-}
-
-async function notifyApproval(userAccount, requestType, amount = null) {
-  const amountText = amount ? ` of ৳${amount}` : '';
-  const message = `✅ Your ${requestType} request${amountText} has been approved!`;
-  await sendTransactionNotification(userAccount, message);
-}
-
-async function notifyMoneyAdded(userAccount, amount) {
-  const message = `💸 ৳${amount} has been added to your account`;
-  await sendTransactionNotification(userAccount, message);
-}
-
-// Notification badge update -----
-
-// App Icon Badge System
-let notificationCount = 0;
-
-function updateNotificationBadge(count = 1, increment = false) {
-  if (increment) {
-    notificationCount += count;
-  } else {
-    notificationCount = count;
-  }
-  
-  // Update UI badge
-  const badge = document.getElementById('notification-badge');
-  if (badge) {
-    if (notificationCount > 0) {
-      badge.style.display = 'block';
-      badge.textContent = notificationCount > 9 ? '9+' : notificationCount.toString();
-    } else {
-      badge.style.display = 'none';
-    }
-  }
-  
-  // Update app icon badge (if supported)
-  updateAppIconBadge();
-}
-
-function updateAppIconBadge() {
-  if ('setAppBadge' in navigator) {
-    navigator.setAppBadge(notificationCount).catch(error => {
-      console.log('App badge not supported:', error);
-    });
-  }
-}
-
-function clearNotifications() {
-  notificationCount = 0;
-  updateNotificationBadge(0);
-  
-  if ('clearAppBadge' in navigator) {
-    navigator.clearAppBadge().catch(error => {
-      console.log('Clear app badge error:', error);
-    });
-  }
-}
-
+window.deleteTransaction = deleteTransaction; // NEW
+window.deleteUserNotification = deleteUserNotification; // NEW
+window.generateTransferCodeInput = generateTransferCodeInput; // NEW
 

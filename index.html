@@ -27,6 +27,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="icon" type="image/png" href="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" />
   <link rel="stylesheet" href="./style.css">
+
+
 </head>
 
 <body>
@@ -101,6 +103,11 @@
             class="bi bi-heart"></i> Donate</button>
         <button class="btn btn-outline-dark flex-fill" data-bs-toggle="modal" data-bs-target="#transferModal"><i
             class="bi bi-arrow-left-right"></i> Transfer</button>
+
+        <!-- Withdraw Button -->
+        <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#withdrawModal">
+          <i class="bi bi-cash-coin"></i> Withdraw
+        </button>
         <button class="btn btn-outline-warning flex-fill" data-bs-toggle="modal" data-bs-target="#settingsModal"><i
             class="bi bi-gear"></i> Settings</button>
         <button class="btn btn-outline-secondary flex-fill" data-bs-toggle="modal" data-bs-target="#feedbackModal"><i
@@ -149,6 +156,71 @@
         <button class="btn btn-danger w-100" onclick="logout()">Logout</button>
       </div>
       <hr>
+
+      <!-- PROFIT/LOSS MANAGEMENT SYSTEM -->
+      <div class="profit-loss-section mb-4 p-3 border rounded bg-light">
+        <h5 class="text-center mb-3">💰 Monthly Profit/Loss Management</h5>
+
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label">Month</label>
+            <select id="profitLossMonth" class="form-select">
+              <option value="January">January</option>
+              <option value="February">February</option>
+              <option value="March">March</option>
+              <option value="April">April</option>
+              <option value="May">May</option>
+              <option value="June">June</option>
+              <option value="July">July</option>
+              <option value="August">August</option>
+              <option value="September">September</option>
+              <option value="October">October</option>
+              <option value="November">November</option>
+              <option value="December">December</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Year</label>
+            <input type="number" id="profitLossYear" class="form-control" value="2024" min="2024" max="2030">
+          </div>
+        </div>
+
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label">Total Monthly Profit/Loss (৳)</label>
+            <input type="number" id="monthlyProfitLoss" class="form-control" placeholder="Enter amount">
+            <small class="text-muted">Positive for Profit, Negative for Loss</small>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Service Charge (%)</label>
+            <input type="number" id="serviceChargePercent" class="form-control" value="5" min="0" max="100">
+          </div>
+        </div>
+
+        <!-- Current Investment Summary -->
+        <div class="investment-summary mb-3 p-3 border rounded bg-white">
+          <h6>📊 Current Investment Summary</h6>
+          <div id="investmentSummary" class="small text-muted">
+            Loading investment data...
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-2">
+            <button class="btn btn-success w-100 btn-lg" onclick="distributeMonthlyProfit()">
+              <i class="bi bi-graph-up-arrow"></i> Distribute Profit
+            </button>
+          </div>
+          <div class="col-md-6 mb-2">
+            <button class="btn btn-danger w-100 btn-lg" onclick="distributeMonthlyLoss()">
+              <i class="bi bi-graph-down-arrow"></i> Distribute Loss
+            </button>
+          </div>
+        </div>
+
+        <small class="text-muted">Profit/Loss will be distributed based on each user's current investment
+          percentage</small>
+      </div>
       <!-- feedback -->
       <h5>Feedback Notifications</h5>
       <ul id="feedbackList" class="list-group mb-3"></ul>
@@ -161,33 +233,12 @@
     </div>
   </div>
 
-  <!-- Notification Bell with Badge -->
-  <button class="btn btn-outline-primary position-relative ms-2" onclick="showNotificationPanel()">
-    <i class="bi bi-bell"></i>
-    <span id="notification-badge"
-      class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;">
-      0
-    </span>
-  </button>
 
-  <!-- Notification Panel -->
-  <div id="notification-panel" class="card hidden position-absolute top-100 end-0 mt-2"
-    style="width: 350px; z-index: 1050;">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h6 class="mb-0">Notifications</h6>
-      <div>
-        <button class="btn btn-sm btn-outline-secondary me-1" onclick="clearNotifications()">Clear</button>
-        <button type="button" class="btn-close" onclick="hideNotificationPanel()"></button>
-      </div>
-    </div>
-    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
-      <div id="notifications-list" class="p-2">
-        <!-- Notifications will appear here -->
-      </div>
-    </div>
-  </div>
 
-  <!-- MODALS (Same as before, keep all your existing modals) -->
+
+
+
+  <!-- Add Money Modal - UPDATED: Note replaced with Phone Number -->
   <div class="modal fade" id="addMoneyModal" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
@@ -195,21 +246,34 @@
           <h5>Add Money</h5>
         </div>
         <div class="modal-body">
-          <input type="number" id="addAmount" class="form-control mb-2" placeholder="Enter amount">
-          <select id="addMethod" class="form-select mb-2">
-            <option>Bkash</option>
-            <option>Nagad</option>
-            <option>Rocket</option>
-          </select>
-          <textarea id="addNote" class="form-control" placeholder="Note"></textarea>
+          <div class="mb-3">
+            <label class="form-label">Amount (৳)</label>
+            <input type="number" id="addAmount" class="form-control" placeholder="Enter amount">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Payment Method</label>
+            <select id="addMethod" class="form-select">
+              <option value="Bkash">Bkash</option>
+              <option value="Nagad">Nagad</option>
+              <option value="Rocket">Rocket</option>
+              <option value="Bank">Bank</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Your Phone/Account Number</label>
+            <input type="text" id="addPhoneNumber" class="form-control"
+              placeholder="e.g., 01712345678 or Bank Account No" required>
+            <small class="text-muted">Enter your phone number or bank account number</small>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-          <button class="btn btn-success" onclick="requestAddMoney()">Submit</button>
+          <button class="btn btn-success" onclick="requestAddMoney()">Submit Request</button>
         </div>
       </div>
     </div>
   </div>
+
 
   <div class="modal fade" id="donationModal" tabindex="-1">
     <div class="modal-dialog">
@@ -229,6 +293,7 @@
     </div>
   </div>
 
+  <!-- Transfer Modal - FIXED: Added Transfer Code Field -->
   <div class="modal fade" id="transferModal" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
@@ -236,13 +301,68 @@
           <h5>Transfer Money</h5>
         </div>
         <div class="modal-body">
-          <input type="text" id="transferTo" class="form-control mb-2" placeholder="Receiver Account No">
+          <input type="text" id="transferTo" class="form-control mb-2" placeholder="Receiver Account No (BMDSSS...)">
           <input type="number" id="transferAmount" class="form-control mb-2" placeholder="Enter amount">
-          <textarea id="transferNote" class="form-control" placeholder="Message"></textarea>
+
+          <!-- Transfer Code Section - ADDED -->
+          <div class="mb-2">
+            <div class="input-group">
+              <input type="text" id="transferCode" class="form-control" placeholder="4-digit Transfer Code"
+                maxlength="4">
+              <button class="btn btn-outline-secondary" type="button" onclick="generateTransferCodeInput()">
+                Generate Code
+              </button>
+            </div>
+            <small class="text-muted">Admin will verify this code for security</small>
+          </div>
+
+          <textarea id="transferNote" class="form-control" placeholder="Message (Optional)"></textarea>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-          <button class="btn btn-secondary" onclick="requestTransfer()">Submit</button>
+          <button class="btn btn-primary" onclick="requestTransfer()">Submit Request</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Withdraw Modal - FIXED: Corrected function name -->
+  <div class="modal fade" id="withdrawModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">💸 Withdraw Money</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Amount (৳)</label>
+            <input type="number" class="form-control" id="withdrawAmount" placeholder="Enter amount">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Withdrawal Method</label>
+            <select class="form-select" id="withdrawMethod">
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="bKash">bKash</option>
+              <option value="Nagad">Nagad</option>
+              <option value="Rocket">Rocket</option>
+              <option value="Cash">Cash</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Account/Number</label>
+            <input type="text" class="form-control" id="withdrawAccount"
+              placeholder="e.g., 017XXXXXXXX or Bank Account No">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Note (Optional)</label>
+            <textarea class="form-control" id="withdrawNote" placeholder="Any additional note"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <!-- FIXED: Changed from requestWithdraw() to requestWithdrawMoney() -->
+          <button type="button" class="btn btn-warning" onclick="requestWithdrawMoney()">Request Withdraw</button>
         </div>
       </div>
     </div>
@@ -285,6 +405,7 @@
       </div>
     </div>
   </div>
+
 
   <!-- FIREBASE SDK -->
   <!-- FIREBASE SDK WITH MESSAGING -->
