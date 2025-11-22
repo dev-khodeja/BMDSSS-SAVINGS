@@ -1232,7 +1232,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // -----------Investment Money -----------
 
-// Browser Notification Function
+// Fixed Browser Notification Function for PWA
 function showBrowserNotification(title, message) {
   // Check if browser supports notifications
   if (!("Notification" in window)) {
@@ -1240,23 +1240,76 @@ function showBrowserNotification(title, message) {
     return;
   }
 
-  // Check if permission is already granted
-  if (Notification.permission === "granted") {
-    new Notification(title, { body: message, icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" });
+  // Check if we're in a service worker context (PWA)
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    // Send message to service worker for notification
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SHOW_NOTIFICATION',
+      title: title,
+      message: message
+    });
   } 
-  // Otherwise, ask for permission
-  else if (Notification.permission !== "denied") {
+  // For regular web context
+  else if (Notification.permission === "granted") {
+    new Notification(title, { 
+      body: message, 
+      icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" 
+    });
+  } else if (Notification.permission !== "denied") {
     Notification.requestPermission().then(permission => {
       if (permission === "granted") {
-        new Notification(title, { body: message, icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" });
+        new Notification(title, { 
+          body: message, 
+          icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" 
+        });
       }
     });
   }
 }
 
-// Profit/Loss Management System - COMPLETE CODE
+// Alternative notification function for PWA
+function showPwaNotification(title, message) {
+  // Try service worker first
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SHOW_NOTIFICATION',
+      title: title,
+      message: message
+    });
+  } 
+  // Fallback to regular notification
+  else if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body: message });
+  }
+  // Final fallback to alert
+  else {
+    console.log('📢 ' + title + ': ' + message);
+  }
+}
 
-// Helper function to calculate total balance of all users
+// Update addNotification function to use PWA compatible method
+async function addNotification(notification, specificUser = null) {
+  console.log('📨 Sending notification:', notification);
+  
+  const notificationData = {
+    message: notification,
+    forUser: specificUser || 'global',
+    timestamp: Date.now(),
+    read: false,
+    type: specificUser ? 'personal' : 'global'
+  };
+  
+  const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
+  await window.firebase.push(notificationsRef, notificationData);
+  
+  if (!specificUser || specificUser === currentUser) {
+    const title = specificUser ? 'BMDSSS 🔔' : 'BMDSSS 📢';
+    // Use PWA compatible notification
+    showPwaNotification(title, notification);
+  }
+}
+
+// Profit/Loss Management System - PWA COMPATIBLE
 function calculateTotalBalance(users) {
   return Object.values(users).reduce((total, user) => {
     return total + (user.balance || 0);
@@ -1499,79 +1552,13 @@ async function distributeMonthlyLoss() {
   }
 }
 
-// Update admin panel to load investment summary
-async function updateAdminPanel(){
-  const requests = await getRequests();
-  const feedbacks = await getFeedbacks();
-  const users = await getUsers();
-  
-  updateUserDropdown(users);
-  updateAllAccountsList(users);
-  loadInvestmentSummary(); // Load investment summary
-  
-  // Update Requests List with phone number display
-  const l = document.getElementById('pendingRequests');
-  l.innerHTML = '';
-  
-  const pendingRequests = requests.filter(r => r.status === 'pending');
-  
-  if (pendingRequests.length === 0) {
-    l.innerHTML = '<li class="list-group-item text-muted">No pending requests</li>';
-  } else {
-    pendingRequests.forEach((r) => {
-      const li = document.createElement('li');
-      li.className = 'list-group-item';
-      
-      let requestDetails = `<div><b>${r.type}</b>${r.user?` by <b>${r.user}</b>`:''}${r.amount?` - ৳${r.amount}`:''}</div>`;
-      
-      // Show phone number for Add Money requests
-      if (r.type === 'Add' && r.phoneNumber) {
-        requestDetails += `<div class="text-success mt-1"><small>Number: <b>${r.phoneNumber}</b> (${r.method})</small></div>`;
-      }
-      
-      // Show transfer code if available
-      if (r.transferCode) {
-        requestDetails += `<div class="text-warning mt-1"><small>Transfer Code: <b>${r.transferCode}</b></small></div>`;
-      }
-      
-      // Show recipient for transfers and donations
-      if (r.to) {
-        requestDetails += `<div class="text-info mt-1"><small>To: <b>${r.to}</b></small></div>`;
-      }
-      
-      li.innerHTML = `
-        ${requestDetails}
-        <div class='mt-2'>
-          <button class='btn btn-sm btn-success me-1' onclick='approveRequest("${r.id}")'>Approve</button>
-          <button class='btn btn-sm btn-danger' onclick='rejectRequest("${r.id}")'>Reject</button>
-        </div>
-      `;
-      l.appendChild(li);
-    });
-  }
-  
-  // Update Feedback List
-  const fbList = document.getElementById('feedbackList');
-  fbList.innerHTML = '';
-  
-  if (feedbacks.length === 0) {
-    fbList.innerHTML = '<li class="list-group-item text-muted">No feedback yet</li>';
-  } else {
-    feedbacks.forEach((f) => {
-      const li = document.createElement('li');
-      li.className = 'list-group-item';
-      li.innerHTML = `💬 <b>${f.user}</b>: ${f.text} <button class='btn btn-sm btn-outline-danger float-end' onclick='deleteFeedback("${f.id}")'>X</button>`;
-      fbList.appendChild(li);
-    });
-  }
-}
-
 // Make functions available globally
 window.distributeMonthlyProfit = distributeMonthlyProfit;
 window.distributeMonthlyLoss = distributeMonthlyLoss;
 window.loadInvestmentSummary = loadInvestmentSummary;
 window.calculateTotalBalance = calculateTotalBalance;
 window.showBrowserNotification = showBrowserNotification;
+window.showPwaNotification = showPwaNotification;
 // Make functions available globally
 window.signup = signup;
 window.login = login;

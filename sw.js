@@ -154,3 +154,29 @@ self.addEventListener('sync', event => {
 // Real time-notification---
 
 
+
+
+// -------Investment Money--------
+// Service Worker for PWA Notifications
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    self.registration.showNotification(event.data.title, {
+      body: event.data.message,
+      icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+      badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg'
+    });
+  }
+});
+
+// Background sync for offline support
+self.addEventListener('sync', event => {
+  if (event.tag === 'background-sync') {
+    event.waitUntil(doBackgroundSync());
+  }
+});
+
+async function doBackgroundSync() {
+  // Background sync logic here
+  console.log('Background sync completed');
+}
+
