@@ -1476,3 +1476,80 @@ window.deleteTransaction = deleteTransaction;
 window.deleteUserNotification = deleteUserNotification;
 window.generateTransferCodeInput = generateTransferCodeInput;
 window.showBrowserNotification = showBrowserNotification;
+
+
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js')
+      .then(function(registration) {
+        console.log('ServiceWorker registration successful:', registration.scope);
+        
+        // Check for updates
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          console.log('Service Worker update found!');
+          
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New update available
+              if (confirm('New version available! Reload to update?')) {
+                window.location.reload();
+              }
+            }
+          });
+        });
+      })
+      .catch(function(error) {
+        console.log('ServiceWorker registration failed:', error);
+      });
+  });
+}
+
+// Check if app is installed
+window.addEventListener('appinstalled', (evt) => {
+  console.log('App was installed successfully!');
+});
+
+
+// script.js এর শেষে যোগ করুন
+let deferredPrompt;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  
+  // Show install button after 5 seconds
+  setTimeout(() => {
+    showInstallPromotion();
+  }, 5000);
+});
+
+function showInstallPromotion() {
+  if (deferredPrompt && !isAppInstalled()) {
+    const installButton = document.createElement('button');
+    installButton.innerHTML = '📱 Install BMDSS App';
+    installButton.className = 'btn btn-success position-fixed bottom-0 end-0 m-3';
+    installButton.style.zIndex = '9999';
+    installButton.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+    
+    installButton.addEventListener('click', async () => {
+      installButton.style.display = 'none';
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        console.log('User accepted install');
+      }
+      deferredPrompt = null;
+    });
+    
+    document.body.appendChild(installButton);
+  }
+}
+
+function isAppInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || 
+         window.navigator.standalone === true ||
+         document.referrer.includes('android-app://');
+}
