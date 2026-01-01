@@ -1475,3 +1475,4 @@ window.deleteUserAccount = deleteUserAccount;
 window.deleteTransaction = deleteTransaction;
 window.deleteUserNotification = deleteUserNotification;
 window.generateTransferCodeInput = generateTransferCodeInput;
+window.showBrowserNotification = showBrowserNotification;
