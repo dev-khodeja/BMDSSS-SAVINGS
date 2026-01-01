@@ -372,6 +372,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Make functions available globally
 window.resetLogoutTimer = resetLogoutTimer;
+
 // Forgot Password
 async function forgotPassword(){
   const accountNo = document.getElementById('login-account').value.trim();
@@ -480,10 +481,6 @@ async function deleteTransaction(transactionId) {
   }
 }
 
-// User Requests
-
-// Add Money Request
-// Add Money Request - FIXED
 // Add Money Request - UPDATED: Only phone number, no note
 async function requestAddMoney(){
   const a = +document.getElementById('addAmount').value;
@@ -515,6 +512,7 @@ async function requestAddMoney(){
   
   updateAdminPanel();
 }
+
 // Withdraw Money Request - NEW FUNCTION
 async function requestWithdrawMoney(){
   const a = +document.getElementById('withdrawAmount').value,
@@ -548,7 +546,6 @@ async function requestWithdrawMoney(){
   
   updateAdminPanel();
 }
-
 
 // Donation Request - Fixed to always go to BMDSSS0001
 async function requestDonation(){
@@ -584,7 +581,6 @@ async function requestDonation(){
 }
 
 // Transfer Request with 4-digit code
-// Transfer Request with 4-digit code - FIXED
 async function requestTransfer(){
   const to = document.getElementById('transferTo').value.trim(),
         a = +document.getElementById('transferAmount').value,
@@ -789,6 +785,9 @@ async function updateAdminPanel(){
   updateUserDropdown(users);
   updateAllAccountsList(users);
   
+  // Update profit/loss account dropdown
+  updateProfitLossAccountDropdown(users);
+  
   // Update Requests List with phone number display
   const l = document.getElementById('pendingRequests');
   l.innerHTML = '';
@@ -844,6 +843,20 @@ async function updateAdminPanel(){
       fbList.appendChild(li);
     });
   }
+}
+
+// Update profit/loss account dropdown
+function updateProfitLossAccountDropdown(users) {
+  const accountSelect = document.getElementById('profitLossAccount');
+  accountSelect.innerHTML = '<option value="">Select Account</option>';
+  
+  Object.keys(users).forEach(accountNo => {
+    const user = users[accountNo];
+    const option = document.createElement('option');
+    option.value = accountNo;
+    option.textContent = `${accountNo} - ${user.display || user.name} (Balance: ৳${user.balance || 0})`;
+    accountSelect.appendChild(option);
+  });
 }
 
 function updateUserDropdown(users) {
@@ -943,6 +956,137 @@ async function sendSpecificNotification() {
 async function deleteFeedback(feedbackId){
   await deleteFeedbackFromDB(feedbackId);
   updateAdminPanel();
+}
+
+// INDIVIDUAL PROFIT/LOSS FUNCTIONS - NEW
+
+// Add individual profit to specific account
+async function addIndividualProfit() {
+  const accountNo = document.getElementById('profitLossAccount').value;
+  const amount = parseFloat(document.getElementById('profitLossAmount').value);
+  
+  if (!accountNo) {
+    return alert('❌ Please select an account');
+  }
+  
+  if (!amount || amount <= 0) {
+    return alert('❌ Please enter a valid positive amount');
+  }
+  
+  if (!confirm(`💰 Add profit of ৳${amount} to account ${accountNo}?`)) {
+    return;
+  }
+  
+  try {
+    const users = await getUsers();
+    const user = users[accountNo];
+    
+    if (!user) {
+      return alert('❌ User not found!');
+    }
+    
+    const currentBalance = user.balance || 0;
+    const newBalance = currentBalance + amount;
+    const transactionId = `profit_${accountNo}_${Date.now()}`;
+    
+    // Update user balance
+    await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
+      balance: parseFloat(newBalance.toFixed(2))
+    });
+    
+    // Add transaction record
+    await window.firebase.set(
+      window.firebase.ref(window.firebase.db, `users/${accountNo}/transactions/${transactionId}`),
+      {
+        message: `💰 Profit Added: +৳${amount.toFixed(2)}`,
+        amount: parseFloat(amount.toFixed(2)),
+        type: 'profit',
+        timestamp: Date.now()
+      }
+    );
+    
+    // Send notification
+    await addNotification(`💰 Profit added: +৳${amount.toFixed(2)} to your account`, accountNo);
+    
+    alert(`✅ Profit of ৳${amount} added to account ${accountNo}`);
+    
+    // Clear form
+    document.getElementById('profitLossAmount').value = '';
+    
+    // Update admin panel
+    updateAdminPanel();
+    
+  } catch (error) {
+    console.error('Error adding profit:', error);
+    alert('❌ Error adding profit: ' + error.message);
+  }
+}
+
+// Add individual loss to specific account (deduct money)
+async function addIndividualLoss() {
+  const accountNo = document.getElementById('profitLossAccount').value;
+  const amount = parseFloat(document.getElementById('profitLossAmount').value);
+  
+  if (!accountNo) {
+    return alert('❌ Please select an account');
+  }
+  
+  if (!amount || amount <= 0) {
+    return alert('❌ Please enter a valid positive amount');
+  }
+  
+  if (!confirm(`📉 Deduct loss of ৳${amount} from account ${accountNo}?`)) {
+    return;
+  }
+  
+  try {
+    const users = await getUsers();
+    const user = users[accountNo];
+    
+    if (!user) {
+      return alert('❌ User not found!');
+    }
+    
+    const currentBalance = user.balance || 0;
+    
+    if (currentBalance < amount) {
+      return alert('❌ Insufficient balance to deduct this amount');
+    }
+    
+    const newBalance = currentBalance - amount;
+    const transactionId = `loss_${accountNo}_${Date.now()}`;
+    
+    // Update user balance
+    await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
+      balance: parseFloat(newBalance.toFixed(2))
+    });
+    
+    // Add transaction record
+    await window.firebase.set(
+      window.firebase.ref(window.firebase.db, `users/${accountNo}/transactions/${transactionId}`),
+      {
+        message: `📉 Loss Deducted: -৳${amount.toFixed(2)}`,
+        amount: parseFloat(-amount.toFixed(2)),
+        type: 'loss',
+        timestamp: Date.now()
+      }
+    );
+    
+    // Send notification
+    await addNotification(`📉 Loss deducted: -৳${amount.toFixed(2)} from your account`, accountNo);
+    
+    alert(`✅ Loss of ৳${amount} deducted from account ${accountNo}`);
+    
+    // Clear form
+    document.getElementById('profitLossAmount').value = '';
+    
+    // Update admin panel
+    updateAdminPanel();
+    
+  } catch (error) {
+    console.error('Error adding loss:', error);
+    alert('❌ Error adding loss: ' + error.message);
+  }
 }
 
 // Approve Requests - Updated with Withdraw and Transfer Code verification
@@ -1227,11 +1371,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-
-
-
-// -----------Investment Money -----------
-
 // Fixed Browser Notification Function for PWA
 function showBrowserNotification(title, message) {
   // Check if browser supports notifications
@@ -1309,264 +1448,18 @@ async function addNotification(notification, specificUser = null) {
   }
 }
 
-// Profit/Loss Management System - PWA COMPATIBLE
-function calculateTotalBalance(users) {
-  return Object.values(users).reduce((total, user) => {
-    return total + (user.balance || 0);
-  }, 0);
-}
-
-// Load and display investment summary
-async function loadInvestmentSummary() {
-  const users = await getUsers();
-  let totalInvestment = calculateTotalBalance(users);
-  let summaryHTML = '';
-  
-  Object.entries(users).forEach(([accountNo, user]) => {
-    const balance = user.balance || 0;
-    const percentage = totalInvestment > 0 ? (balance / totalInvestment) * 100 : 0;
-    
-    summaryHTML += `
-      <div class="row">
-        <div class="col-6">${accountNo} - ${user.display || user.name}</div>
-        <div class="col-3">৳${balance.toFixed(2)}</div>
-        <div class="col-3">${percentage.toFixed(2)}%</div>
-      </div>
-    `;
-  });
-  
-  document.getElementById('investmentSummary').innerHTML = `
-    <div class="row fw-bold mb-2">
-      <div class="col-6">User</div>
-      <div class="col-3">Investment</div>
-      <div class="col-3">Percentage</div>
-    </div>
-    ${summaryHTML}
-    <div class="row fw-bold mt-2 border-top pt-2">
-      <div class="col-6">TOTAL</div>
-      <div class="col-3">৳${totalInvestment.toFixed(2)}</div>
-      <div class="col-3">100%</div>
-    </div>
-  `;
-}
-
-// Calculate distribution based on investment percentage
-async function distributeMonthlyProfit() {
-  const month = document.getElementById('profitLossMonth').value;
-  const year = document.getElementById('profitLossYear').value;
-  const totalAmount = +document.getElementById('monthlyProfitLoss').value;
-  const serviceChargePercent = +document.getElementById('serviceChargePercent').value || 5;
-  
-  if (!totalAmount || totalAmount <= 0) {
-    return alert('❌ Please enter a valid profit amount');
-  }
-  
-  const users = await getUsers();
-  const totalInvestment = calculateTotalBalance(users);
-  
-  if (totalInvestment <= 0) {
-    return alert('❌ No investment found to distribute profit');
-  }
-  
-  if (!confirm(`💰 Distribute ${month} ${year} Profit?\n\nTotal Profit: ৳${totalAmount.toFixed(2)}\nService Charge: ${serviceChargePercent}%\nTotal Investment: ৳${totalInvestment.toFixed(2)}\n\nThis will update ALL user accounts!`)) {
-    return;
-  }
-  
-  try {
-    const serviceCharge = (totalAmount * serviceChargePercent) / 100;
-    const netProfit = totalAmount - serviceCharge;
-    
-    let distributionSummary = `📊 ${month} ${year} Profit Distribution:\n\n`;
-    distributionSummary += `Total Profit: ৳${totalAmount.toFixed(2)}\n`;
-    distributionSummary += `Service Charge (${serviceChargePercent}%): ৳${serviceCharge.toFixed(2)}\n`;
-    distributionSummary += `Net Profit: ৳${netProfit.toFixed(2)}\n`;
-    distributionSummary += `Total Investment: ৳${totalInvestment.toFixed(2)}\n\n`;
-    distributionSummary += `User Distributions:\n`;
-    
-    for (const [accountNo, user] of Object.entries(users)) {
-      const userInvestment = user.balance || 0;
-      if (userInvestment > 0) {
-        const userPercentage = (userInvestment / totalInvestment) * 100;
-        const userProfit = (userInvestment / totalInvestment) * netProfit;
-        const newBalance = userInvestment + userProfit;
-        const transactionId = `${month}_${year}_${accountNo}_${Date.now()}`;
-        
-        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
-          balance: parseFloat(newBalance.toFixed(2))
-        });
-        
-        await window.firebase.set(
-          window.firebase.ref(window.firebase.db, `users/${accountNo}/transactions/${transactionId}`),
-          {
-            message: `💰 ${month} ${year} Profit Share: +৳${userProfit.toFixed(2)}`,
-            amount: parseFloat(userProfit.toFixed(2)),
-            type: 'monthly_profit',
-            month: month,
-            year: year,
-            timestamp: Date.now()
-          }
-        );
-        
-        await addNotification(`💰 ${month} ${year} Profit: ৳${userProfit.toFixed(2)} added to your account (${userPercentage.toFixed(2)}% share)`, accountNo);
-        
-        distributionSummary += `${accountNo}: ৳${userProfit.toFixed(2)} (${userPercentage.toFixed(2)}%)\n`;
-      }
-    }
-    
-    if (serviceCharge > 0) {
-      const adminAccount = users['BMDSSS0001'];
-      if (adminAccount) {
-        const newAdminBalance = (adminAccount.balance || 0) + serviceCharge;
-        const serviceChargeId = `${month}_${year}_service_${Date.now()}`;
-        
-        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/BMDSSS0001'), {
-          balance: parseFloat(newAdminBalance.toFixed(2))
-        });
-        
-        await window.firebase.set(
-          window.firebase.ref(window.firebase.db, `users/BMDSSS0001/transactions/${serviceChargeId}`),
-          {
-            message: `💼 ${month} ${year} Service Charge: +৳${serviceCharge.toFixed(2)}`,
-            amount: parseFloat(serviceCharge.toFixed(2)),
-            type: 'service_charge',
-            month: month,
-            year: year,
-            timestamp: Date.now()
-          }
-        );
-      }
-    }
-    
-    await addNotification(`🎉 ${month} ${year} Profit Distributed! Total: ৳${totalAmount.toFixed(2)}`);
-    
-    document.getElementById('monthlyProfitLoss').value = '';
-    
-    alert(`✅ ${month} ${year} Profit distributed successfully!\n\n${distributionSummary}`);
-    updateAdminPanel();
-    loadInvestmentSummary();
-    
-  } catch (error) {
-    console.error('Profit distribution error:', error);
-    alert('❌ Error distributing profit: ' + error.message);
-  }
-}
-
-// Distribute Monthly Loss
-async function distributeMonthlyLoss() {
-  const month = document.getElementById('profitLossMonth').value;
-  const year = document.getElementById('profitLossYear').value;
-  const totalAmount = Math.abs(+document.getElementById('monthlyProfitLoss').value);
-  const serviceChargePercent = +document.getElementById('serviceChargePercent').value || 5;
-  
-  if (!totalAmount || totalAmount <= 0) {
-    return alert('❌ Please enter a valid loss amount');
-  }
-  
-  const users = await getUsers();
-  const totalInvestment = calculateTotalBalance(users);
-  
-  if (totalInvestment <= 0) {
-    return alert('❌ No investment found to distribute loss');
-  }
-  
-  if (!confirm(`⚠️ Distribute ${month} ${year} Loss?\n\nTotal Loss: ৳${totalAmount.toFixed(2)}\nService Charge: ${serviceChargePercent}%\nTotal Investment: ৳${totalInvestment.toFixed(2)}\n\nThis will deduct from ALL user accounts!`)) {
-    return;
-  }
-  
-  try {
-    const serviceCharge = (totalAmount * serviceChargePercent) / 100;
-    const totalDeduction = totalAmount + serviceCharge;
-    
-    let distributionSummary = `📊 ${month} ${year} Loss Distribution:\n\n`;
-    distributionSummary += `Total Loss: ৳${totalAmount.toFixed(2)}\n`;
-    distributionSummary += `Service Charge (${serviceChargePercent}%): ৳${serviceCharge.toFixed(2)}\n`;
-    distributionSummary += `Total Deduction: ৳${totalDeduction.toFixed(2)}\n`;
-    distributionSummary += `Total Investment: ৳${totalInvestment.toFixed(2)}\n\n`;
-    distributionSummary += `User Deductions:\n`;
-    
-    for (const [accountNo, user] of Object.entries(users)) {
-      const userInvestment = user.balance || 0;
-      if (userInvestment > 0) {
-        const userPercentage = (userInvestment / totalInvestment) * 100;
-        const userLossShare = (userInvestment / totalInvestment) * totalDeduction;
-        const newBalance = Math.max(0, userInvestment - userLossShare);
-        const transactionId = `${month}_${year}_${accountNo}_${Date.now()}`;
-        
-        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
-          balance: parseFloat(newBalance.toFixed(2))
-        });
-        
-        await window.firebase.set(
-          window.firebase.ref(window.firebase.db, `users/${accountNo}/transactions/${transactionId}`),
-          {
-            message: `📉 ${month} ${year} Loss Share: -৳${userLossShare.toFixed(2)}`,
-            amount: parseFloat(-userLossShare.toFixed(2)),
-            type: 'monthly_loss',
-            month: month,
-            year: year,
-            timestamp: Date.now()
-          }
-        );
-        
-        await addNotification(`📉 ${month} ${year} Loss: ৳${userLossShare.toFixed(2)} deducted from your account (${userPercentage.toFixed(2)}% share)`, accountNo);
-        
-        distributionSummary += `${accountNo}: -৳${userLossShare.toFixed(2)} (${userPercentage.toFixed(2)}%)\n`;
-      }
-    }
-    
-    if (serviceCharge > 0) {
-      const adminAccount = users['BMDSSS0001'];
-      if (adminAccount) {
-        const newAdminBalance = (adminAccount.balance || 0) + serviceCharge;
-        const serviceChargeId = `${month}_${year}_service_${Date.now()}`;
-        
-        await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/BMDSSS0001'), {
-          balance: parseFloat(newAdminBalance.toFixed(2))
-        });
-        
-        await window.firebase.set(
-          window.firebase.ref(window.firebase.db, `users/BMDSSS0001/transactions/${serviceChargeId}`),
-          {
-            message: `💼 ${month} ${year} Service Charge: +৳${serviceCharge.toFixed(2)}`,
-            amount: parseFloat(serviceCharge.toFixed(2)),
-            type: 'service_charge',
-            month: month,
-            year: year,
-            timestamp: Date.now()
-          }
-        );
-      }
-    }
-    
-    await addNotification(`📉 ${month} ${year} Loss Applied. Total: ৳${totalAmount.toFixed(2)}`);
-    
-    document.getElementById('monthlyProfitLoss').value = '';
-    
-    alert(`✅ ${month} ${year} Loss distributed successfully!\n\n${distributionSummary}`);
-    updateAdminPanel();
-    loadInvestmentSummary();
-    
-  } catch (error) {
-    console.error('Loss distribution error:', error);
-    alert('❌ Error distributing loss: ' + error.message);
-  }
-}
-
 // Make functions available globally
-window.distributeMonthlyProfit = distributeMonthlyProfit;
-window.distributeMonthlyLoss = distributeMonthlyLoss;
-window.loadInvestmentSummary = loadInvestmentSummary;
-window.calculateTotalBalance = calculateTotalBalance;
-window.showBrowserNotification = showBrowserNotification;
-window.showPwaNotification = showPwaNotification;
-// Make functions available globally
+window.addIndividualProfit = addIndividualProfit;
+window.addIndividualLoss = addIndividualLoss;
+
+// Make other functions available globally
 window.signup = signup;
 window.login = login;
 window.forgotPassword = forgotPassword;
 window.logout = logout;
 window.showSection = showSection;
 window.requestAddMoney = requestAddMoney;
-window.requestWithdrawMoney = requestWithdrawMoney; // NEW
+window.requestWithdrawMoney = requestWithdrawMoney;
 window.requestDonation = requestDonation;
 window.requestTransfer = requestTransfer;
 window.requestProfileUpdate = requestProfileUpdate;
@@ -1579,7 +1472,6 @@ window.sendNotice = sendNotice;
 window.sendSpecificNotification = sendSpecificNotification;
 window.viewTermsPDF = viewTermsPDF;
 window.deleteUserAccount = deleteUserAccount;
-window.deleteTransaction = deleteTransaction; // NEW
-window.deleteUserNotification = deleteUserNotification; // NEW
-window.generateTransferCodeInput = generateTransferCodeInput; // NEW
-
+window.deleteTransaction = deleteTransaction;
+window.deleteUserNotification = deleteUserNotification;
+window.generateTransferCodeInput = generateTransferCodeInput;

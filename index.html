@@ -19,8 +19,6 @@
 
   <!-- Favicon -->
   <link rel="icon" type="image/jpeg" href="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg">
-  <!-- Favicon -->
-  <link rel="icon" type="image/jpeg" href="./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg">
   <title>BMDSSS SAVINGS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -157,86 +155,46 @@
       </div>
       <hr>
 
-      <!-- PROFIT/LOSS MANAGEMENT SYSTEM -->
-      <div class="profit-loss-section mb-4 p-3 border rounded bg-light">
-        <h5 class="text-center mb-3">💰 Monthly Profit/Loss Management</h5>
-
+      <!-- INDIVIDUAL PROFIT/LOSS MANAGEMENT SECTION - ADDED -->
+      <div class="individual-profit-loss-section mb-4 p-3 border rounded bg-light">
+        <h5 class="text-center mb-3">💰 Individual Account Profit/Loss</h5>
+        
         <div class="row mb-3">
           <div class="col-md-6">
-            <label class="form-label">Month</label>
-            <select id="profitLossMonth" class="form-select">
-              <option value="January">January</option>
-              <option value="February">February</option>
-              <option value="March">March</option>
-              <option value="April">April</option>
-              <option value="May">May</option>
-              <option value="June">June</option>
-              <option value="July">July</option>
-              <option value="August">August</option>
-              <option value="September">September</option>
-              <option value="October">October</option>
-              <option value="November">November</option>
-              <option value="December">December</option>
+            <select id="profitLossAccount" class="form-select mb-2">
+              <option value="">Select Account</option>
             </select>
           </div>
           <div class="col-md-6">
-            <label class="form-label">Year</label>
-            <input type="number" id="profitLossYear" class="form-control" value="2024" min="2024" max="2030">
-          </div>
-        </div>
-
-        <div class="row mb-3">
-          <div class="col-md-6">
-            <label class="form-label">Total Monthly Profit/Loss (৳)</label>
-            <input type="number" id="monthlyProfitLoss" class="form-control" placeholder="Enter amount">
+            <input type="number" id="profitLossAmount" class="form-control" placeholder="Enter amount">
             <small class="text-muted">Positive for Profit, Negative for Loss</small>
           </div>
-          <div class="col-md-6">
-            <label class="form-label">Service Charge (%)</label>
-            <input type="number" id="serviceChargePercent" class="form-control" value="5" min="0" max="100">
-          </div>
         </div>
-
-        <!-- Current Investment Summary -->
-        <div class="investment-summary mb-3 p-3 border rounded bg-white">
-          <h6>📊 Current Investment Summary</h6>
-          <div id="investmentSummary" class="small text-muted">
-            Loading investment data...
-          </div>
-        </div>
-
+        
         <div class="row">
           <div class="col-md-6 mb-2">
-            <button class="btn btn-success w-100 btn-lg" onclick="distributeMonthlyProfit()">
-              <i class="bi bi-graph-up-arrow"></i> Distribute Profit
+            <button class="btn btn-success w-100 btn-lg" onclick="addIndividualProfit()">
+              <i class="bi bi-graph-up-arrow"></i> Add Profit
             </button>
           </div>
           <div class="col-md-6 mb-2">
-            <button class="btn btn-danger w-100 btn-lg" onclick="distributeMonthlyLoss()">
-              <i class="bi bi-graph-down-arrow"></i> Distribute Loss
+            <button class="btn btn-danger w-100 btn-lg" onclick="addIndividualLoss()">
+              <i class="bi bi-graph-down-arrow"></i> Add Loss
             </button>
           </div>
         </div>
-
-        <small class="text-muted">Profit/Loss will be distributed based on each user's current investment
-          percentage</small>
+        
+        <small class="text-muted">This will directly add profit or deduct loss from selected account</small>
       </div>
+
       <!-- feedback -->
       <h5>Feedback Notifications</h5>
       <ul id="feedbackList" class="list-group mb-3"></ul>
       <!-- all account -->
       <h5>All Accounts</h5>
       <ul id="allAccountsList" class="list-group mb-3"></ul>
-
-
-
     </div>
   </div>
-
-
-
-
-
 
   <!-- Add Money Modal - UPDATED: Note replaced with Phone Number -->
   <div class="modal fade" id="addMoneyModal" tabindex="-1">
@@ -406,8 +364,7 @@
     </div>
   </div>
 
-
-  <!-- FIREBASE SDK -->
+   <!-- FIREBASE SDK -->
   <!-- FIREBASE SDK WITH MESSAGING -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
@@ -443,3 +400,5 @@
 </body>
 
 </html>
+
+ 
