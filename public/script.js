@@ -1,5 +1,5 @@
 // Connect to socket.io server
-const socket = io('http://localhost:5000');
+const socket = io('https://bmdsss-savings.onrender.com');
 
 // Listen for real-time notifications
 socket.on('notification', (data) => {
@@ -24,14 +24,14 @@ function askNotificationPermission() {
 
 function subscribeUserToPush(registration) {
   // Use your public VAPID key here (must match backend)
-  const publicVapidKey = 'BObX...YOUR_PUBLIC_KEY...';
+  const publicVapidKey = 'BHkdRiZFoaD9AnDAr_PRG2WhoWAaey6a3AWeCjRS18PCdXlN3j4COszFjGUbG58VXcYivUyg3DHOrBvjSfpo3-U';
   const convertedVapidKey = urlBase64ToUint8Array(publicVapidKey);
   registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: convertedVapidKey
   }).then(subscription => {
     // Send subscription to backend
-    fetch('http://localhost:5000/subscribe', {
+    fetch('https://bmdsss-savings.onrender.com/subscribe', {
       method: 'POST',
       body: JSON.stringify(subscription),
       headers: {
