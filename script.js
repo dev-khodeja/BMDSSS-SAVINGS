@@ -107,46 +107,8 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function showNotification(title, body) {
-  if (!('Notification' in window)) {
-    console.log('📢 ' + title + ': ' + body);
-    return;
-  }
-  
-  // Check and request permission if needed
-  if (Notification.permission !== 'granted') {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('📢 ' + title + ': ' + body);
-      return;
-    }
-  }
-  
-  // Try service worker first
-  if ('serviceWorker' in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration) {
-        await registration.showNotification(title, {
-          body: body,
-          icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
-          badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
-          vibrate: [200, 100, 200],
-          tag: 'bmdss-notification'
-        });
-        return;
-      }
-    } catch (error) {
-      console.log('Service worker notification failed:', error);
-    }
-  }
-  
-  // Fallback to regular notification
-  if (Notification.permission === 'granted') {
-    new Notification(title, { 
-      body: body,
-      icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg'
-    });
-  }
+  // Use PWA notification function (service worker only - no browser notifications)
+  return await showPwaNotification(title, body);
 }
 // ...existing code...
 let currentUser = null;
@@ -1691,116 +1653,80 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// Fixed Browser Notification Function for PWA
+// Fixed Browser Notification Function for PWA - ONLY uses service worker
 async function showBrowserNotification(title, message) {
-  // Check if browser supports notifications
-  if (!("Notification" in window)) {
-    console.log("This browser does not support notifications");
-    return;
-  }
-
-  // Request permission if not already granted
-  if (Notification.permission !== 'granted') {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('Notification permission denied');
-      return;
-    }
-  }
-
-  // Try service worker first (best for PWA)
-  if ('serviceWorker' in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration) {
-        await registration.showNotification(title, {
-          body: message,
-          icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
-          badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
-          vibrate: [200, 100, 200],
-          tag: 'bmdss-notification'
-        });
-        return;
-      }
-    } catch (error) {
-      console.log('Service worker notification failed:', error);
-    }
-    
-    // Fallback: send message to service worker
-    if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: 'SHOW_NOTIFICATION',
-      title: title,
-      message: message
-    });
-      return;
-    }
-  }
-
-  // Final fallback: regular browser notification
-  if (Notification.permission === "granted") {
-    new Notification(title, { 
-      body: message, 
-      icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" 
-    });
-  }
+  // Use the PWA notification function (service worker only)
+  return await showPwaNotification(title, message);
 }
 
-// Alternative notification function for PWA
+// Alternative notification function for PWA - ONLY uses service worker
 async function showPwaNotification(title, message) {
   // Check notification support
   if (!('Notification' in window)) {
-    console.log('📢 ' + title + ': ' + message);
+    console.log('📢 Notifications not supported: ' + title + ': ' + message);
     return;
   }
   
-  // Check permission
-  if (Notification.permission !== 'granted') {
-    console.log('Notification permission not granted');
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('📢 ' + title + ': ' + message);
-      return;
-    }
+  // Check if service worker is available FIRST before requesting permission
+  if (!('serviceWorker' in navigator)) {
+    console.log('📢 Service Worker not supported: ' + title + ': ' + message);
+    return;
   }
   
-  // Try service worker first (best for PWA)
-  if ('serviceWorker' in navigator) {
+  // Wait for service worker to be ready BEFORE requesting permission
+  let registration;
+  try {
+    registration = await navigator.serviceWorker.ready;
+  } catch (error) {
+    console.log('Service worker not ready:', error);
+    return;
+  }
+  
+  // Only request permission AFTER service worker is ready
+  if (Notification.permission !== 'granted') {
     try {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration) {
-        registration.showNotification(title, {
-          body: message, 
-          icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
-          badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
-          vibrate: [200, 100, 200],
-          tag: 'bmdss-notification'
-        });
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        console.log('📢 Permission denied: ' + title + ': ' + message);
         return;
       }
     } catch (error) {
-      console.log('Service worker notification failed, trying fallback:', error);
-    }
-    
-    // Fallback: send message to service worker
-    if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: 'SHOW_NOTIFICATION',
-      title: title,
-      message: message
-    });
+      console.log('Error requesting permission:', error);
       return;
     }
   }
   
-  // Fallback to regular browser notification
-  if (Notification.permission === 'granted') {
-    new Notification(title, { 
-      body: message,
-      icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg'
-    });
-  } else {
-    console.log('📢 ' + title + ': ' + message);
+  // Now show notification via service worker (this prevents Chrome share UI)
+  try {
+    if (registration) {
+      await registration.showNotification(title, {
+        body: message, 
+        icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+        badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+        vibrate: [200, 100, 200],
+        tag: 'bmdss-notification',
+        requireInteraction: false,
+        silent: false
+      });
+      console.log('✅ Notification sent via service worker:', title);
+      return;
+    }
+  } catch (error) {
+    console.log('Service worker notification failed:', error);
+  }
+  
+  // Fallback: send message to service worker if direct call failed
+  if (navigator.serviceWorker.controller) {
+    try {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SHOW_NOTIFICATION',
+        title: title,
+        message: message
+      });
+      console.log('✅ Notification sent via service worker message:', title);
+    } catch (error) {
+      console.log('Failed to send message to service worker:', error);
+    }
   }
 }
 
