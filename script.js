@@ -247,6 +247,27 @@ async function addFeedback(feedbackData) {
     ...feedbackData,
     timestamp: Date.now()
   });
+  
+  // Notify all admins about new feedback
+  await notifyAdminsAboutFeedback(feedbackData);
+}
+
+// Notify all admins about new feedback
+async function notifyAdminsAboutFeedback(feedbackData) {
+  const adminAccounts = await getAdminAccounts();
+  const user = feedbackData.user || 'Unknown';
+  const feedbackText = feedbackData.text || 'No message';
+  const shortFeedback = feedbackText.length > 50 ? feedbackText.substring(0, 50) + '...' : feedbackText;
+  
+  const notificationMessage = `💬 New feedback from ${user}:\n"${shortFeedback}"`;
+  
+  // Send notification to all admin accounts
+  for (const adminAccount of adminAccounts) {
+    // Skip if admin is the same as the feedback sender
+    if (adminAccount === user) continue;
+    
+    await addNotification(notificationMessage, adminAccount);
+  }
 }
 
 async function getFeedbacks() {
@@ -1512,17 +1533,30 @@ async function approveRequest(requestId) {
     const user = users[request.user];
     if (user) {
       const updates = {};
-      if (request.name) updates.name = request.name;
-      if (request.number) updates.phone = request.number;
-      if (request.email) updates.email = request.email;
+      const updatedFields = [];
+      
+      if (request.name) {
+        updates.name = request.name;
+        updatedFields.push('Name');
+      }
+      if (request.number) {
+        updates.phone = request.number;
+        updatedFields.push('Phone');
+      }
+      if (request.email) {
+        updates.email = request.email;
+        updatedFields.push('Email');
+      }
       if (request.password) {
         updates.password = request.password;
         updates.tempPassword = false;
+        updatedFields.push('Password');
       }
       
       await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), updates);
 
-      await addNotification(`✅ Admin approved your profile update! Your changes have been applied successfully`, request.user);
+      const fieldsText = updatedFields.join(', ');
+      await addNotification(`✅ Admin approved your profile update! ${fieldsText} ${updatedFields.length === 1 ? 'has' : 'have'} been updated successfully`, request.user);
     }
   }
 
@@ -1549,16 +1583,25 @@ async function rejectRequest(requestId) {
     let rejectionMessage = '';
     switch(request.type) {
       case 'Add':
-        rejectionMessage = `❌ Admin rejected your add money request of ৳${request.amount || ''}`;
+        rejectionMessage = `❌ Admin rejected your add money request of ৳${request.amount || ''} via ${request.method || 'Payment'}`;
         break;
       case 'Withdraw':
-        rejectionMessage = `❌ Admin rejected your withdraw request of ৳${request.amount || ''}`;
+        rejectionMessage = `❌ Admin rejected your withdraw request of ৳${request.amount || ''} via ${request.method || 'Withdrawal'}`;
         break;
       case 'Transfer':
-        rejectionMessage = `❌ Admin rejected your transfer request of ৳${request.amount || ''} to ${request.to || ''}`;
+        rejectionMessage = `❌ Admin rejected your transfer request of ৳${request.amount || ''} to ${request.to || 'Account'}`;
         break;
       case 'Donate':
-        rejectionMessage = `❌ Admin rejected your donation request of ৳${request.amount || ''}`;
+        rejectionMessage = `❌ Admin rejected your donation request of ৳${request.amount || ''} to ${request.to || 'BMDSSS0001'}`;
+        break;
+      case 'Profile Update':
+        rejectionMessage = `❌ Admin rejected your profile update request`;
+        break;
+      case 'New Account':
+        rejectionMessage = `❌ Admin rejected your new account request`;
+        break;
+      case 'Forgot Password':
+        rejectionMessage = `❌ Admin rejected your password reset request`;
         break;
       default:
         rejectionMessage = `❌ Admin rejected your ${request.type} request`;
