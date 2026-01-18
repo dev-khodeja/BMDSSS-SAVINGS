@@ -20,33 +20,20 @@ async function initializeNotifications() {
         
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            // New update available
-            if (confirm('New version available! Reload to update?')) {
-              window.location.reload();
-            }
-        }
+            // New update available - don't show notification, just log
+            console.log('New service worker installed');
+          }
+        });
       });
-    });
       
       // Wait for service worker to be ready
       await navigator.serviceWorker.ready;
       console.log('Service Worker ready!');
       
-      // Request notification permission
-      if ('Notification' in window) {
-        const permission = await askNotificationPermission();
-        console.log('Notification permission:', permission);
-        
-        if (permission === 'granted') {
-          // Optional: Subscribe to push notifications if PushManager is available
-          if ('PushManager' in window) {
-            try {
-              await subscribeUserToPush(registration);
-            } catch (error) {
-              console.log('Push subscription failed (not critical):', error);
-            }
-          }
-        }
+      // DON'T request permission on page load - only request when needed (when actual notification is sent)
+      // This prevents unwanted Chrome share notifications
+      if ('Notification' in window && Notification.permission === 'default') {
+        console.log('Notification permission will be requested when needed');
       }
     } catch (error) {
       console.error('Service Worker registration failed:', error);
@@ -54,7 +41,7 @@ async function initializeNotifications() {
   }
 }
 
-// Initialize notifications on page load
+// Initialize notifications on page load (silently - no permission request)
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeNotifications);
 } else {
@@ -76,9 +63,15 @@ async function askNotificationPermission() {
     return 'denied';
   }
   
-  // Permission is 'default', request it
-  const permission = await Notification.requestPermission();
-  return permission;
+  // Permission is 'default', request it only when actually needed
+  // Don't request on page load to avoid Chrome share notifications
+  try {
+    const permission = await Notification.requestPermission();
+    return permission;
+  } catch (error) {
+    console.log('Error requesting notification permission:', error);
+    return 'denied';
+  }
 }
 
 function subscribeUserToPush(registration) {
@@ -1631,6 +1624,9 @@ function logout() {
   showSection('login-section');
 }
 
+// Track last notification timestamp to avoid duplicates
+let lastNotificationTime = Date.now();
+
 // Real-time updates for users
 function setupRealTimeListeners() {
   const usersRef = window.firebase.ref(window.firebase.db, 'users');
@@ -1644,8 +1640,40 @@ function setupRealTimeListeners() {
     }
   });
 
+  // Listen for new notifications and show browser notifications
   const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
-  window.firebase.onValue(notificationsRef, updateNotifications);
+  window.firebase.onValue(notificationsRef, async (snapshot) => {
+    if (!snapshot.exists() || !currentUser) return;
+    
+    const notifications = [];
+    snapshot.forEach((childSnapshot) => {
+      const notification = childSnapshot.val();
+      notification.id = childSnapshot.key;
+      notifications.push(notification);
+    });
+    
+    // Find new notifications (after lastNotificationTime)
+    const newNotifications = notifications.filter(n => 
+      n.timestamp > lastNotificationTime &&
+      (n.type === 'global' || (n.type === 'personal' && n.forUser === currentUser))
+    );
+    
+    // Show browser notifications for new notifications
+    for (const notification of newNotifications) {
+      if (notification.timestamp > lastNotificationTime) {
+        lastNotificationTime = Math.max(lastNotificationTime, notification.timestamp);
+        
+        const title = notification.type === 'personal' ? 'BMDSSS 🔔' : 'BMDSSS 📢';
+        const permission = await askNotificationPermission();
+        if (permission === 'granted') {
+          await showPwaNotification(title, notification.message);
+        }
+      }
+    }
+    
+    // Update UI
+    updateNotifications();
+  });
 }
 
 // Initialize real-time listeners when page loads
@@ -1793,10 +1821,28 @@ async function addNotification(notification, specificUser = null) {
   await window.firebase.push(notificationsRef, notificationData);
   
   // Show browser notification if it's for current user or global
-  if (!specificUser || specificUser === currentUser || specificUser === 'admin' && currentUser === 'admin') {
+  // Only show if user is logged in and notification is for them
+  let shouldShowNotification = false;
+  
+  if (!specificUser) {
+    // Global notification - show to all logged in users
+    shouldShowNotification = !!currentUser;
+  } else if (specificUser === currentUser) {
+    // Personal notification for current user
+    shouldShowNotification = true;
+  } else if (specificUser === 'admin' && (currentUser === 'admin' || await isUserAdmin(currentUser))) {
+    // Admin notification - show if current user is admin
+    shouldShowNotification = true;
+  }
+  
+  if (shouldShowNotification && currentUser) {
     const title = specificUser ? 'BMDSSS 🔔' : 'BMDSSS 📢';
-    // Use PWA compatible notification - shows on notification bar
-    await showPwaNotification(title, notification);
+    // Request permission first if needed, then show notification
+    const permission = await askNotificationPermission();
+    if (permission === 'granted') {
+      // Use PWA compatible notification - shows on notification bar
+      await showPwaNotification(title, notification);
+    }
   }
 }
 

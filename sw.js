@@ -213,7 +213,12 @@ self.addEventListener('message', event => {
         badge: '/image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
         vibrate: [200, 100, 200],
         tag: 'bmdss-notification',
-        requireInteraction: false
+        requireInteraction: false,
+        silent: false,
+        data: {
+          url: '/',
+          timestamp: Date.now()
+        }
       })
     );
   }
