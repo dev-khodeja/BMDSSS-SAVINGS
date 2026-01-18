@@ -7,19 +7,78 @@ socket.on('notification', (data) => {
 });
 
 // Request notification permission and register service worker
-if ('serviceWorker' in navigator && 'PushManager' in window) {
-  navigator.serviceWorker.register('sw.js')
-    .then(registration => {
-      askNotificationPermission().then(permission => {
-        if (permission === 'granted') {
-          subscribeUserToPush(registration);
+async function initializeNotifications() {
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.register('./sw.js');
+      console.log('Service Worker registered:', registration.scope);
+      
+      // Check for service worker updates
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        console.log('Service Worker update found!');
+        
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // New update available
+            if (confirm('New version available! Reload to update?')) {
+              window.location.reload();
+            }
         }
       });
     });
+      
+      // Wait for service worker to be ready
+      await navigator.serviceWorker.ready;
+      console.log('Service Worker ready!');
+      
+      // Request notification permission
+      if ('Notification' in window) {
+        const permission = await askNotificationPermission();
+        console.log('Notification permission:', permission);
+        
+        if (permission === 'granted') {
+          // Optional: Subscribe to push notifications if PushManager is available
+          if ('PushManager' in window) {
+            try {
+              await subscribeUserToPush(registration);
+            } catch (error) {
+              console.log('Push subscription failed (not critical):', error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Service Worker registration failed:', error);
+    }
+  }
 }
 
-function askNotificationPermission() {
-  return Notification.requestPermission();
+// Initialize notifications on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeNotifications);
+} else {
+  initializeNotifications();
+}
+
+async function askNotificationPermission() {
+  if (!('Notification' in window)) {
+    console.log('This browser does not support notifications');
+    return 'denied';
+  }
+  
+  if (Notification.permission === 'granted') {
+    return 'granted';
+  }
+  
+  if (Notification.permission === 'denied') {
+    console.log('Notification permission denied');
+    return 'denied';
+  }
+  
+  // Permission is 'default', request it
+  const permission = await Notification.requestPermission();
+  return permission;
 }
 
 function subscribeUserToPush(registration) {
@@ -54,12 +113,45 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-function showNotification(title, body) {
-  if (Notification.permission === 'granted') {
-    navigator.serviceWorker.getRegistration().then(reg => {
-      if (reg) {
-        reg.showNotification(title, { body });
+async function showNotification(title, body) {
+  if (!('Notification' in window)) {
+    console.log('📢 ' + title + ': ' + body);
+    return;
+  }
+  
+  // Check and request permission if needed
+  if (Notification.permission !== 'granted') {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('📢 ' + title + ': ' + body);
+      return;
+    }
+  }
+  
+  // Try service worker first
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration) {
+        await registration.showNotification(title, {
+          body: body,
+          icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+          badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+          vibrate: [200, 100, 200],
+          tag: 'bmdss-notification'
+        });
+        return;
       }
+    } catch (error) {
+      console.log('Service worker notification failed:', error);
+    }
+  }
+  
+  // Fallback to regular notification
+  if (Notification.permission === 'granted') {
+    new Notification(title, { 
+      body: body,
+      icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg'
     });
   }
 }
@@ -71,6 +163,37 @@ async function getUsers() {
   const usersRef = window.firebase.ref(window.firebase.db, 'users');
   const snapshot = await window.firebase.get(usersRef);
   return snapshot.exists() ? snapshot.val() : {};
+}
+
+// Check if user is admin
+function isAdmin(accountNo) {
+  return accountNo === 'admin';
+}
+
+// Check if user has admin role in Firebase
+async function isUserAdmin(accountNo) {
+  if (accountNo === 'admin') return true;
+  const users = await getUsers();
+  const user = users[accountNo];
+  return user && user.isAdmin === true;
+}
+
+// Get all admin account numbers
+async function getAdminAccounts() {
+  const users = await getUsers();
+  const adminAccounts = [];
+  
+  // Legacy admin
+  adminAccounts.push('admin');
+  
+  // Firebase admin users
+  Object.keys(users).forEach(accountNo => {
+    if (users[accountNo].isAdmin === true) {
+      adminAccounts.push(accountNo);
+    }
+  });
+  
+  return adminAccounts;
 }
 
 async function saveUser(accountNo, userData) {
@@ -88,6 +211,60 @@ async function addRequest(requestData) {
     timestamp: Date.now(),
     status: 'pending'
   });
+  
+  // Send notification to all admins about new request
+  await notifyAdminsAboutRequest(requestData);
+}
+
+// Notify all admins about new request
+async function notifyAdminsAboutRequest(requestData) {
+  const adminAccounts = await getAdminAccounts();
+  const user = requestData.user || 'Unknown';
+  const requestType = requestData.type || 'Request';
+  const amount = requestData.amount ? `৳${requestData.amount}` : '';
+  
+  // Build notification message based on request type
+  let notificationMessage = '';
+  
+  switch(requestData.type) {
+    case 'Add':
+      notificationMessage = `📥 ${user} requested to add money ${amount} via ${requestData.method || 'Payment'}`;
+      if (requestData.phoneNumber) {
+        notificationMessage += `\n📞 Phone/Account: ${requestData.phoneNumber}`;
+      }
+      break;
+    case 'Withdraw':
+      notificationMessage = `📤 ${user} requested to withdraw ${amount} via ${requestData.method || 'Withdrawal'}`;
+      break;
+    case 'Transfer':
+      notificationMessage = `💸 ${user} requested to transfer ${amount} to ${requestData.to || 'Account'}`;
+      if (requestData.transferCode) {
+        notificationMessage += `\n🔐 Transfer Code: ${requestData.transferCode}`;
+      }
+      break;
+    case 'Donate':
+      notificationMessage = `❤️ ${user} requested to donate ${amount} to ${requestData.to || 'BMDSSS0001'}`;
+      break;
+    case 'New Account':
+      notificationMessage = `📝 New account request from ${requestData.name || 'User'}\n📧 Email: ${requestData.email || 'N/A'}\n📞 Phone: ${requestData.phone || 'N/A'}`;
+      break;
+    case 'Forgot Password':
+      notificationMessage = `🔐 ${user} requested password reset`;
+      break;
+    case 'Profile Update':
+      notificationMessage = `⚙️ ${user} requested profile update`;
+      break;
+    default:
+      notificationMessage = `📋 ${user} submitted a ${requestType} request`;
+  }
+  
+  // Send notification to all admin accounts
+  for (const adminAccount of adminAccounts) {
+    // Skip if admin is the same as the requester
+    if (adminAccount === user) continue;
+    
+    await addNotification(notificationMessage, adminAccount);
+  }
 }
 
 async function getRequests() {
@@ -136,26 +313,7 @@ async function deleteFeedbackFromDB(feedbackId) {
   await window.firebase.remove(window.firebase.ref(window.firebase.db, 'feedbacks/' + feedbackId));
 }
 
-// Enhanced Notification Function with FCM
-async function addNotification(notification, specificUser = null) {
-  console.log('📨 Sending notification:', notification);
-  
-  const notificationData = {
-    message: notification,
-    forUser: specificUser || 'global',
-    timestamp: Date.now(),
-    read: false,
-    type: specificUser ? 'personal' : 'global'
-  };
-  
-  const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
-  await window.firebase.push(notificationsRef, notificationData);
-  
-  if (!specificUser || specificUser === currentUser) {
-    const title = specificUser ? 'BMDSSS 🔔' : 'BMDSSS 📢';
-    showBrowserNotification(title, notification);
-  }
-}
+// Notification function will be defined later (after showPwaNotification)
 
 async function getNotifications() {
   const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
@@ -325,8 +483,9 @@ async function login(){
   const accountNo = document.getElementById('login-account').value.trim();
   const pw = document.getElementById('login-password').value.trim();
   
-  // Admin login
+  // Admin login (legacy support)
   if(accountNo === 'admin' && pw === 'admin726') {
+    currentUser = 'admin';
     showAdminPanel();
     setupActivityTracking();
     resetLogoutTimer();
@@ -352,19 +511,18 @@ async function login(){
   setupActivityTracking();
   resetLogoutTimer();
   
-  setTimeout(() => {
-    setupFCMNotifications().then(success => {
-      if (success) {
-        console.log('FCM ready for user:', currentUser);
-      }
-    });
-  }, 1000);
+  // Notifications are already initialized globally on page load
+  console.log('Notifications ready for user:', currentUser);
   
+  // Check if user is admin and show appropriate panel
+  if(await isUserAdmin(accountNo)) {
+    showAdminPanel();
+  } else {
   if(user.tempPassword) {
     alert('🔐 You are using a temporary password. Please change your password in Settings for security.');
   }
-  
   showDashboard(user);
+  }
 }
 
 // Update logout function to clear timer
@@ -951,6 +1109,14 @@ function updateAllAccountsList(users) {
       const user = users[accountNo];
       const li = document.createElement('li');
       li.className = 'list-group-item';
+      
+      // Build admin toggle button variables
+      const isAdminUser = user.isAdmin === true;
+      const adminBtnClass = isAdminUser ? 'btn-warning' : 'btn-success';
+      const adminBtnText = isAdminUser ? 'Remove Admin' : 'Make Admin';
+      const adminIconClass = isAdminUser ? 'person-x' : 'person-check';
+      const adminBoolValue = isAdminUser;
+      
       li.innerHTML = `
         <div class="row">
           <div class="col-md-8">
@@ -971,17 +1137,60 @@ function updateAllAccountsList(users) {
               <div class="col-12">
                 <small><strong>Balance:</strong> ৳${user.balance || 0}</small>
               </div>
+              <div class="col-12">
+                <small><strong>Role:</strong> ${isAdminUser ? '<span class="badge bg-success">Admin</span>' : '<span class="badge bg-secondary">User</span>'}</small>
+              </div>
             </div>
           </div>
           <div class="col-md-4 mt-2 mt-md-0 text-md-end">
-            <button class="btn btn-sm btn-outline-danger w-100 w-md-auto" onclick="deleteUserAccount('${accountNo}')" title="Delete Account">
-              <i class="bi bi-trash"></i> Delete
-            </button>
+            <div class="d-flex flex-column gap-1">
+              <button class="btn btn-sm ${adminBtnClass} w-100 w-md-auto" onclick="toggleAdminRole('${accountNo}', ${adminBoolValue})" title="${adminBtnText}">
+                <i class="bi bi-${adminIconClass}"></i> ${adminBtnText}
+              </button>
+              <button class="btn btn-sm btn-outline-danger w-100 w-md-auto" onclick="deleteUserAccount('${accountNo}')" title="Delete Account">
+                <i class="bi bi-trash"></i> Delete
+              </button>
+            </div>
           </div>
         </div>
       `;
       accountsList.appendChild(li);
     });
+  }
+}
+
+async function toggleAdminRole(accountNo, isCurrentlyAdmin) {
+  const action = isCurrentlyAdmin ? 'remove admin role from' : 'make admin';
+  
+  if (!confirm(`⚠️ Are you sure you want to ${action} ${accountNo}?`)) {
+    return;
+  }
+  
+  try {
+    const users = await getUsers();
+    const user = users[accountNo];
+    
+    if (!user) {
+      alert('❌ User not found!');
+      return;
+    }
+    
+    // Toggle admin role
+    await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
+      isAdmin: !isCurrentlyAdmin
+    });
+    
+    const newRole = !isCurrentlyAdmin ? 'Admin' : 'User';
+    alert(`✅ ${accountNo} is now ${newRole}!`);
+    
+    // Notify the user
+    if (!isCurrentlyAdmin) {
+      await addNotification(`🔔 You have been granted admin access! You can now access the admin panel.`, accountNo);
+    }
+    
+    updateAdminPanel();
+  } catch (error) {
+    alert('❌ Error updating admin role: ' + error.message);
   }
 }
 
@@ -1204,7 +1413,7 @@ async function approveRequest(requestId) {
         }
       );
 
-      await addNotification(`✅ Add money request approved! ৳${request.amount} added to your account`, request.user);
+      await addNotification(`✅ Admin approved your add money request! ৳${request.amount} has been added to your account via ${request.method || 'Payment'}`, request.user);
     }
   }
 
@@ -1229,7 +1438,7 @@ async function approveRequest(requestId) {
         }
       );
 
-      await addNotification(`✅ Withdraw request approved! ৳${request.amount} withdrawn from your account`, request.user);
+      await addNotification(`✅ Admin approved your withdraw request! ৳${request.amount} has been withdrawn from your account via ${request.method || 'Withdrawal'}`, request.user);
     }
   }
 
@@ -1273,7 +1482,7 @@ async function approveRequest(requestId) {
         }
       );
 
-      await addNotification(`✅ Donation approved! ৳${request.amount} donated to BMDSSS0001`, request.user);
+      await addNotification(`✅ Admin approved your donation! ৳${request.amount} has been donated to BMDSSS0001`, request.user);
       await addNotification(`🎉 Received donation of ৳${request.amount} from ${request.user}`, 'BMDSSS0001');
     }
   }
@@ -1324,7 +1533,7 @@ async function approveRequest(requestId) {
         }
       );
 
-      await addNotification(`✅ Transfer approved! Sent ৳${request.amount} to ${request.to}`, request.user);
+      await addNotification(`✅ Admin approved your transfer! ৳${request.amount} has been sent to ${request.to}`, request.user);
       await addNotification(`💰 Received ৳${request.amount} from ${request.user}`, request.to);
     }
   }
@@ -1358,7 +1567,7 @@ async function approveRequest(requestId) {
       
       await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + request.user), updates);
 
-      await addNotification(`✅ Profile update approved! Your changes have been applied`, request.user);
+      await addNotification(`✅ Admin approved your profile update! Your changes have been applied successfully`, request.user);
     }
   }
 
@@ -1382,7 +1591,24 @@ async function rejectRequest(requestId) {
   });
 
   if (request && request.user) {
-    await addNotification(`❌ Your ${request.type} request was rejected by admin`, request.user);
+    let rejectionMessage = '';
+    switch(request.type) {
+      case 'Add':
+        rejectionMessage = `❌ Admin rejected your add money request of ৳${request.amount || ''}`;
+        break;
+      case 'Withdraw':
+        rejectionMessage = `❌ Admin rejected your withdraw request of ৳${request.amount || ''}`;
+        break;
+      case 'Transfer':
+        rejectionMessage = `❌ Admin rejected your transfer request of ৳${request.amount || ''} to ${request.to || ''}`;
+        break;
+      case 'Donate':
+        rejectionMessage = `❌ Admin rejected your donation request of ৳${request.amount || ''}`;
+        break;
+      default:
+        rejectionMessage = `❌ Admin rejected your ${request.type} request`;
+    }
+    await addNotification(rejectionMessage, request.user);
   }
 
   alert(`❌ Request rejected!`);
@@ -1438,63 +1664,121 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Fixed Browser Notification Function for PWA
-function showBrowserNotification(title, message) {
+async function showBrowserNotification(title, message) {
   // Check if browser supports notifications
   if (!("Notification" in window)) {
     console.log("This browser does not support notifications");
     return;
   }
 
-  // Check if we're in a service worker context (PWA)
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    // Send message to service worker for notification
+  // Request permission if not already granted
+  if (Notification.permission !== 'granted') {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('Notification permission denied');
+      return;
+    }
+  }
+
+  // Try service worker first (best for PWA)
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration) {
+        await registration.showNotification(title, {
+          body: message,
+          icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+          badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+          vibrate: [200, 100, 200],
+          tag: 'bmdss-notification'
+        });
+        return;
+      }
+    } catch (error) {
+      console.log('Service worker notification failed:', error);
+    }
+    
+    // Fallback: send message to service worker
+    if (navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({
       type: 'SHOW_NOTIFICATION',
       title: title,
       message: message
     });
-  } 
-  // For regular web context
-  else if (Notification.permission === "granted") {
+      return;
+    }
+  }
+
+  // Final fallback: regular browser notification
+  if (Notification.permission === "granted") {
     new Notification(title, { 
       body: message, 
       icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" 
-    });
-  } else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then(permission => {
-      if (permission === "granted") {
-        new Notification(title, { 
-          body: message, 
-          icon: "./image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg" 
-        });
-      }
     });
   }
 }
 
 // Alternative notification function for PWA
-function showPwaNotification(title, message) {
-  // Try service worker first
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+async function showPwaNotification(title, message) {
+  // Check notification support
+  if (!('Notification' in window)) {
+    console.log('📢 ' + title + ': ' + message);
+    return;
+  }
+  
+  // Check permission
+  if (Notification.permission !== 'granted') {
+    console.log('Notification permission not granted');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('📢 ' + title + ': ' + message);
+      return;
+    }
+  }
+  
+  // Try service worker first (best for PWA)
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration) {
+        registration.showNotification(title, {
+          body: message, 
+          icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+          badge: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+          vibrate: [200, 100, 200],
+          tag: 'bmdss-notification'
+        });
+        return;
+      }
+    } catch (error) {
+      console.log('Service worker notification failed, trying fallback:', error);
+    }
+    
+    // Fallback: send message to service worker
+    if (navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({
       type: 'SHOW_NOTIFICATION',
       title: title,
       message: message
     });
-  } 
-  // Fallback to regular notification
-  else if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, { body: message });
+      return;
+    }
   }
-  // Final fallback to alert
-  else {
+  
+  // Fallback to regular browser notification
+  if (Notification.permission === 'granted') {
+    new Notification(title, { 
+      body: message,
+      icon: './image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg'
+    });
+  } else {
     console.log('📢 ' + title + ': ' + message);
   }
 }
 
-// Update addNotification function to use PWA compatible method
+// Main notification function - Saves to database and shows browser notification
 async function addNotification(notification, specificUser = null) {
-  console.log('📨 Sending notification:', notification);
+  console.log('📨 Sending notification:', notification, 'to:', specificUser || 'all users');
   
   const notificationData = {
     message: notification,
@@ -1504,13 +1788,15 @@ async function addNotification(notification, specificUser = null) {
     type: specificUser ? 'personal' : 'global'
   };
   
+  // Save to Firebase
   const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
   await window.firebase.push(notificationsRef, notificationData);
   
-  if (!specificUser || specificUser === currentUser) {
+  // Show browser notification if it's for current user or global
+  if (!specificUser || specificUser === currentUser || specificUser === 'admin' && currentUser === 'admin') {
     const title = specificUser ? 'BMDSSS 🔔' : 'BMDSSS 📢';
-    // Use PWA compatible notification
-    showPwaNotification(title, notification);
+    // Use PWA compatible notification - shows on notification bar
+    await showPwaNotification(title, notification);
   }
 }
 
@@ -1538,40 +1824,56 @@ window.sendNotice = sendNotice;
 window.sendSpecificNotification = sendSpecificNotification;
 window.viewTermsPDF = viewTermsPDF;
 window.deleteUserAccount = deleteUserAccount;
+window.toggleAdminRole = toggleAdminRole;
 window.deleteTransaction = deleteTransaction;
 window.deleteUserNotification = deleteUserNotification;
 window.generateTransferCodeInput = generateTransferCodeInput;
 window.showBrowserNotification = showBrowserNotification;
 
-
-
-// Service Worker Registration
+// Utility function to unregister service worker (for development/testing)
+async function unregisterServiceWorker() {
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js')
-      .then(function(registration) {
-        console.log('ServiceWorker registration successful:', registration.scope);
-        
-        // Check for updates
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          console.log('Service Worker update found!');
-          
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New update available
-              if (confirm('New version available! Reload to update?')) {
-                window.location.reload();
-              }
-            }
-          });
-        });
-      })
-      .catch(function(error) {
-        console.log('ServiceWorker registration failed:', error);
-      });
-  });
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      
+      for (let registration of registrations) {
+        const unregistered = await registration.unregister();
+        if (unregistered) {
+          console.log('✅ Service Worker unregistered:', registration.scope);
+        }
+      }
+      
+      // Clear all caches
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(
+          cacheNames.map(cacheName => {
+            console.log('🗑️ Deleting cache:', cacheName);
+            return caches.delete(cacheName);
+          })
+        );
+        console.log('✅ All caches cleared!');
+      }
+      
+      console.log('✅ Service Workers cleaned! Please reload the page.');
+      alert('✅ Service Workers and caches cleared! Please reload the page.');
+      return true;
+    } catch (error) {
+      console.error('❌ Error unregistering service worker:', error);
+      alert('❌ Error: ' + error.message);
+      return false;
+    }
+  } else {
+    console.log('⚠️ Service Workers not supported in this browser');
+    return false;
+  }
 }
+
+// Make it available globally for console access
+window.unregisterServiceWorker = unregisterServiceWorker;
+
+// Service Worker registration is now handled by initializeNotifications() function
+// No duplicate registration needed
 
 // Check if app is installed
 window.addEventListener('appinstalled', (evt) => {

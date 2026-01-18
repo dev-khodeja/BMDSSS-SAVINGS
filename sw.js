@@ -203,12 +203,19 @@ self.addEventListener('notificationclick', event => {
 // Message handler for notifications from main thread
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
-    const { title, message } = event.data;
-    self.registration.showNotification(title, {
-      body: message,
-      icon: '/image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
-      badge: '/image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg'
-    });
+    const notificationTitle = event.data.title || 'BMDSS Savings';
+    const notificationBody = event.data.message || event.data.body || 'New notification';
+    
+    event.waitUntil(
+      self.registration.showNotification(notificationTitle, {
+        body: notificationBody,
+        icon: '/image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+        badge: '/image/121d1fb6-b13b-411c-9e75-f22e651d063f.jpg',
+        vibrate: [200, 100, 200],
+        tag: 'bmdss-notification',
+        requireInteraction: false
+      })
+    );
   }
   
   if (event.data && event.data.type === 'SKIP_WAITING') {
