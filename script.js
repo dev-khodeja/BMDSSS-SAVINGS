@@ -121,34 +121,21 @@ async function getUsers() {
 }
 
 // Check if user is admin
+// NOTE: BMDSSS0003 is now the ONLY admin in the system
 function isAdmin(accountNo) {
-  return accountNo === 'admin';
+  return accountNo === 'BMDSSS0003';
 }
 
-// Check if user has admin role in Firebase
+// Check if user has admin role
+// Force BMDSSS0003 to always be admin, ignore any other flags
 async function isUserAdmin(accountNo) {
-  if (accountNo === 'admin') return true;
-  const users = await getUsers();
-  const user = users[accountNo];
-  return user && user.isAdmin === true;
+  return accountNo === 'BMDSSS0003';
 }
 
 // Get all admin account numbers
+// Only BMDSSS0003 is treated as admin
 async function getAdminAccounts() {
-  const users = await getUsers();
-  const adminAccounts = [];
-  
-  // Legacy admin
-  adminAccounts.push('admin');
-  
-  // Firebase admin users
-  Object.keys(users).forEach(accountNo => {
-    if (users[accountNo].isAdmin === true) {
-      adminAccounts.push(accountNo);
-    }
-  });
-  
-  return adminAccounts;
+  return ['BMDSSS0003'];
 }
 
 async function saveUser(accountNo, userData) {
@@ -161,13 +148,24 @@ async function deleteUser(accountNo) {
 
 async function addRequest(requestData) {
   const requestsRef = window.firebase.ref(window.firebase.db, 'requests');
-  await window.firebase.push(requestsRef, {
+  const newRequestRef = await window.firebase.push(requestsRef, {
     ...requestData,
     timestamp: Date.now(),
     status: 'pending'
   });
   
-  // Send notification to all admins about new request
+  // If the requester is the main admin (BMDSSS0003),
+  // auto-approve the request so no extra admin is needed
+  if (requestData.user === 'BMDSSS0003') {
+    try {
+      await approveRequest(newRequestRef.key);
+      return;
+    } catch (e) {
+      console.error('Auto-approve failed, keeping as pending request:', e);
+    }
+  }
+  
+  // Send notification to all admins about new request (for normal users)
   await notifyAdminsAboutRequest(requestData);
 }
 
@@ -459,15 +457,6 @@ async function login(){
   const accountNo = document.getElementById('login-account').value.trim();
   const pw = document.getElementById('login-password').value.trim();
   
-  // Admin login (legacy support)
-  if(accountNo === 'admin' && pw === 'admin726') {
-    currentUser = 'admin';
-    showAdminPanel();
-    setupActivityTracking();
-    resetLogoutTimer();
-    return;
-  }
-  
   if(!accountNo.startsWith('BMDSSS')) {
     alert('❌ Please enter a valid BMDSSS account number (e.g., BMDSSS0001)');
     return;
@@ -482,6 +471,8 @@ async function login(){
   }
   
   currentUser = accountNo;
+  // Remember this account for notifications even after logout
+  localStorage.setItem('notificationUser', accountNo);
   
   // Start auto logout timer
   setupActivityTracking();
@@ -490,15 +481,11 @@ async function login(){
   // Notifications are already initialized globally on page load
   console.log('Notifications ready for user:', currentUser);
   
-  // Check if user is admin and show appropriate panel
-  if(await isUserAdmin(accountNo)) {
-    showAdminPanel();
-  } else {
+  // Always show dashboard after login
   if(user.tempPassword) {
     alert('🔐 You are using a temporary password. Please change your password in Settings for security.');
   }
   showDashboard(user);
-  }
 }
 
 // Update logout function to clear timer
@@ -528,6 +515,16 @@ function showDashboard(user) {
   document.getElementById('user-account').innerText = user.accountNo;
   document.getElementById('user-name').innerText = user.display || user.name;
   document.getElementById('user-balance').innerText = user.balance || 0;
+
+  // If this is the main admin account, show the Admin Panel button
+  const adminBtn = document.getElementById('admin-panel-button');
+  if (adminBtn) {
+    if (user.accountNo === 'BMDSSS0003') {
+      adminBtn.classList.remove('d-none');
+    } else {
+      adminBtn.classList.add('d-none');
+    }
+  }
 
   updateTransactionList();
   updateNotifications();
@@ -1086,13 +1083,6 @@ function updateAllAccountsList(users) {
       const li = document.createElement('li');
       li.className = 'list-group-item';
       
-      // Build admin toggle button variables
-      const isAdminUser = user.isAdmin === true;
-      const adminBtnClass = isAdminUser ? 'btn-warning' : 'btn-success';
-      const adminBtnText = isAdminUser ? 'Remove Admin' : 'Make Admin';
-      const adminIconClass = isAdminUser ? 'person-x' : 'person-check';
-      const adminBoolValue = isAdminUser;
-      
       li.innerHTML = `
         <div class="row">
           <div class="col-md-8">
@@ -1114,15 +1104,12 @@ function updateAllAccountsList(users) {
                 <small><strong>Balance:</strong> ৳${user.balance || 0}</small>
               </div>
               <div class="col-12">
-                <small><strong>Role:</strong> ${isAdminUser ? '<span class="badge bg-success">Admin</span>' : '<span class="badge bg-secondary">User</span>'}</small>
+                <small><strong>Role:</strong> ${accountNo === 'BMDSSS0003' ? '<span class="badge bg-success">Admin</span>' : '<span class="badge bg-secondary">User</span>'}</small>
               </div>
             </div>
           </div>
           <div class="col-md-4 mt-2 mt-md-0 text-md-end">
             <div class="d-flex flex-column gap-1">
-              <button class="btn btn-sm ${adminBtnClass} w-100 w-md-auto" onclick="toggleAdminRole('${accountNo}', ${adminBoolValue})" title="${adminBtnText}">
-                <i class="bi bi-${adminIconClass}"></i> ${adminBtnText}
-              </button>
               <button class="btn btn-sm btn-outline-danger w-100 w-md-auto" onclick="deleteUserAccount('${accountNo}')" title="Delete Account">
                 <i class="bi bi-trash"></i> Delete
               </button>
@@ -1136,38 +1123,8 @@ function updateAllAccountsList(users) {
 }
 
 async function toggleAdminRole(accountNo, isCurrentlyAdmin) {
-  const action = isCurrentlyAdmin ? 'remove admin role from' : 'make admin';
-  
-  if (!confirm(`⚠️ Are you sure you want to ${action} ${accountNo}?`)) {
-    return;
-  }
-  
-  try {
-    const users = await getUsers();
-    const user = users[accountNo];
-    
-    if (!user) {
-      alert('❌ User not found!');
-      return;
-    }
-    
-    // Toggle admin role
-    await window.firebase.update(window.firebase.ref(window.firebase.db, 'users/' + accountNo), {
-      isAdmin: !isCurrentlyAdmin
-    });
-    
-    const newRole = !isCurrentlyAdmin ? 'Admin' : 'User';
-    alert(`✅ ${accountNo} is now ${newRole}!`);
-    
-    // Notify the user
-    if (!isCurrentlyAdmin) {
-      await addNotification(`🔔 You have been granted admin access! You can now access the admin panel.`, accountNo);
-    }
-    
-    updateAdminPanel();
-  } catch (error) {
-    alert('❌ Error updating admin role: ' + error.message);
-  }
+  // Admin roles are now fixed: only BMDSSS0003 is admin.
+  alert('⚠️ Admin roles cannot be changed. BMDSSS0003 is the only admin.');
 }
 
 async function deleteUserAccount(accountNo) {
@@ -1631,6 +1588,8 @@ function logout() {
 
 // Track last notification timestamp to avoid duplicates
 let lastNotificationTime = Date.now();
+// Keep last known account for notifications (works even after logout)
+let notificationUser = localStorage.getItem('notificationUser') || null;
 
 // Real-time updates for users
 function setupRealTimeListeners() {
@@ -1648,7 +1607,9 @@ function setupRealTimeListeners() {
   // Listen for new notifications and show browser notifications
   const notificationsRef = window.firebase.ref(window.firebase.db, 'notifications');
   window.firebase.onValue(notificationsRef, async (snapshot) => {
-    if (!snapshot.exists() || !currentUser) return;
+    if (!snapshot.exists()) return;
+    
+    const activeUserForNotifications = currentUser || notificationUser;
     
     const notifications = [];
     snapshot.forEach((childSnapshot) => {
@@ -1658,10 +1619,14 @@ function setupRealTimeListeners() {
     });
     
     // Find new notifications (after lastNotificationTime)
-    const newNotifications = notifications.filter(n => 
-      n.timestamp > lastNotificationTime &&
-      (n.type === 'global' || (n.type === 'personal' && n.forUser === currentUser))
-    );
+    const newNotifications = notifications.filter(n => {
+      if (n.timestamp <= lastNotificationTime) return false;
+      if (n.type === 'global') return true;
+      if (n.type === 'personal' && activeUserForNotifications) {
+        return n.forUser === activeUserForNotifications;
+      }
+      return false;
+    });
     
     // Show browser notifications for new notifications
     for (const notification of newNotifications) {

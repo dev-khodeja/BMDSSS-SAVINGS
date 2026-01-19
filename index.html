@@ -114,6 +114,10 @@
             class="bi bi-gear"></i> Settings</button>
         <button class="btn btn-outline-secondary flex-fill" data-bs-toggle="modal" data-bs-target="#feedbackModal"><i
             class="bi bi-chat-dots"></i> Feedback</button>
+        <!-- Admin Panel button: only used when logged in as BMDSSS0003 (shown via JS) -->
+        <button id="admin-panel-button" class="btn btn-outline-dark flex-fill d-none" onclick="showAdminPanel()">
+          <i class="bi bi-shield-lock"></i> Admin Panel
+        </button>
         <button class="btn btn-outline-danger flex-fill " onclick="logout()">Logout</button>
       </div>
 
